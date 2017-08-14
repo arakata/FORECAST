@@ -181,7 +181,6 @@ def add_power(data, power_train_data, cols):
                 power_train_data['competitionid'] == competition]
             power.update(
                 _get_power_map(competition, competition_data, col, coerce_fn))
-
 #        print(power)     
 
         names = {}
@@ -190,7 +189,7 @@ def add_power(data, power_train_data, cols):
             teamid = str(data.iloc[index]['teamid'])
             names[data.iloc[index]['team_name']] = power.get(teamid, 0.5)
             power_col.iloc[index] = power.get(teamid, 0.5)
-        print(['{0}: {1:.3f}'.format(x[0], x[1])
-              for x in sorted(names.items(), key=(lambda x: x[1]))])
+        #print(['{0}: {1:.3f}'.format(x[0], x[1])
+        #      for x in sorted(names.items(), key=(lambda x: x[1]))])
         data['power_{0}'.format(final_name)] = power_col
     return data

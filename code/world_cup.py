@@ -18,7 +18,7 @@
 
 import random
 import math
-
+import logging
 import numpy as np
 import pandas as pd
 import pylab as pl
@@ -26,6 +26,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
 import statsmodels.api as sm
 
+logger = logging.getLogger(__name__)
 random.seed(1234)
 
 
@@ -148,7 +149,47 @@ def build_model_MNlogistic(target, data, acc=0.00000001, alpha=L1_ALPHA):
     logit = sm.MNLogit(target, data, disp=False)
     return logit.fit_regularized(maxiter=1024, alpha=alpha, acc=acc, disp=False)
 
+def get_accuracy(target, predictions, threshold): 
+    zipped = sorted(zip(target, predictions), key=lambda tup: -tup[1])
+    (true_pos, true_neg, false_pos, false_neg) = (0, 0, 0, 0)
+    for index in range(len(target)):
+        (yval, prob) = zipped[index]
+        if float(prob) < threshold:
+            predicted = False
+        else:
+            predicted = True
 
+        if predicted:
+            if yval:
+                true_pos += 1
+                #print('true_pos')
+            else:
+                false_pos += 1 
+                #print('false_pos')
+        else:
+            if yval:
+                false_neg += 1
+                #print('false_neg')
+            else:
+                true_neg += 1
+                #print('true_neg')
+        #print(yval, prob)
+    print('TP:{0} | TN:{1}'.format(true_pos, true_neg))
+    accuracy = (true_pos + true_neg) * 1.0 / len(target) 
+    return accuracy
+
+def get_optimal_threshold(target, predictions):
+    max_acc = (0,0)
+    for n in range(100):
+        n += 1
+        threshold = n / 100
+        accuracy = get_accuracy(target, predictions, threshold)
+        if accuracy > max_acc[1]:
+            max_acc = (threshold, accuracy)
+        #print(threshold, accuracy)
+    return max_acc
+
+       
 def validate(label, target, predictions, baseline=0.5, compute_auc=False,
              quiet=True):
     """ Validates binary predictions, computes confusion matrix and AUC.
@@ -204,6 +245,7 @@ def validate(label, target, predictions, baseline=0.5, compute_auc=False,
                 true_neg += 1
                 #print('true_neg')
         #print(yval, prob)
+    threshold = zipped[int(expect)][1]
     pos = true_pos + false_neg
     neg = true_neg + false_pos
     # P(1 | predicted(1)) and P(0 | predicted(f))
@@ -232,13 +274,14 @@ def validate(label, target, predictions, baseline=0.5, compute_auc=False,
     else:
         auc_value = 'NA'
 
-    print('({0}) Lift: {1:.3f} Auc: {2}'.format(label, lift, auc_value))
+    print('({0}) Threshold: {3:.3f} | Lift: {1:.3f} Auc: {2}'.format(label, lift, auc_value, threshold))
     if not quiet:
         print('    Base: {0:.3f} Acc: {1:.3f} P(1|t): {2:.3f} P(0|f): {3:.3f}'.format(
             baseline, accuracy, prob1_t, prob0_f))
         print('    Fp/Fn/Tp/Tn p/n/c: {0}/{1}/{2}/{3} {4}/{5}/{6}'.format(
             false_pos, false_neg, true_pos, true_neg, pos, neg, len(target)))
-    
+
+    return threshold    
 
 def _coerce_types(vals):
     """ Makes sure all of the values in a list are floats. """
@@ -301,7 +344,7 @@ def _team_test_prob(target):
     return results
 
 
-def extract_predictions(data, predictions):
+def extract_predictions(data, predictions, threshold = 50):
     """' Joins a dataframe containing match data with one
          containing predictions, returning a dataframe with
          team names, predicted values, and if available, the
@@ -332,7 +375,7 @@ def extract_predictions(data, predictions):
     expected_winner = []
     for game in range(len(results)):
         row = results.iloc[game]
-        col = 'team_name' if row['predicted'] >= 50 else 'op_team_name' 
+        col = 'team_name' if row['predicted'] >= threshold else 'op_team_name' 
         expected_winner.append(row[col])
 
     results['expected'] = pd.Series(expected_winner)
@@ -393,12 +436,14 @@ def train_model(data, ignore_cols):
     """
     # Validate the data
     data = prepare_data(data)
+    logger.info('Observations used in the model: {0}'.format(len(data)))
     target_col = 'points'
     (train, test) = split(data)
     (y_train, x_train) = _extract_target(train, target_col)
     x_train2 = _splice(_coerce(_clone_and_drop(x_train, ignore_cols)))
 
     y_train2 = [int(yval) == 3 for yval in y_train]
+    logger.info('Training model')
     model = build_model_logistic(y_train2, x_train2, alpha=8.0)
     return (model, test)
 
