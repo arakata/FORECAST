@@ -17,6 +17,7 @@ import time
 import os
 import logging
 import pylab as pl
+import matplotlib.pyplot as plt
 
 import world_cup
 import match_stats
@@ -257,12 +258,12 @@ def main():
     logger.info('First five predictions:\n{0}'.format(predictions.iloc[:5]))
     
     # Print True Positives and False Positives using the 0.5 -50- threshold.
-    correct = predictions[(predictions['predicted'] > threshold) & 
+    correct = predictions[(predictions['predicted'] > threshold*100) & 
                           (predictions['points'] == 3)][:5]
     print('\nCorrect predictions:')
     print(correct)
 
-    incorrect = predictions[(predictions['predicted'] > threshold) & (
+    incorrect = predictions[(predictions['predicted'] > threshold*100) & (
                              predictions['points'] < 3)][:5]
     print('\nIncorrect predictions:')
     print(incorrect)
@@ -303,7 +304,7 @@ def main():
     logger.info('Prediction metrics:')
     threshold = world_cup.validate(3, y, results['predicted'], baseline, 
                      compute_auc=True, quiet=False)
-    pl.savefig(OUTPUT_GRAPH_PATH + '/ROC1.png')
+    pl.savefig(OUTPUT_GRAPH_PATH + '/ROC_initial.png')
     pl.close()
 
     # ---- Re-processing ----
@@ -394,7 +395,7 @@ def main():
     world_cup.validate('old', y, results['predicted'], baseline, 
                        compute_auc=True, quiet=False)
     pl.legend(loc="lower right")
-    pl.savefig(OUTPUT_GRAPH_PATH + '/ROC2.png')
+    pl.savefig(OUTPUT_GRAPH_PATH + '/ROC_power.png')
     pl.close()
 
     # Print estimated odds ratios.
@@ -482,14 +483,11 @@ def main():
     # Keep only (i) variables relevant to the strategy and (ii) results 
     # with odds information
     strategy_vars = ['index', 'timestamp', 'team_name', 'op_team_name',
-                     'points', 'predicted']
+                     'competitionid', 'points', 'predicted']
     odds_results = odds.get_matches(
                        odds_results, 
                        strategy_vars + gambling_heads)
-    odds_results.to_csv('./output/temp1.csv')
-    print(odds_results.iloc[:5])
-    logger.info('Matches with odds information: {0}'.format(
-                    len(odds_results)))
+
 
     # Validate results with the odds database
     # TODO get the baseline from the training set - How to chose the 
@@ -502,8 +500,19 @@ def main():
                     compute_auc=True, quiet=False)
     pl.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Luck')
     pl.legend(loc="lower right")
-    pl.savefig(OUTPUT_GRAPH_PATH + '/ROC3.png')
+    pl.savefig(OUTPUT_GRAPH_PATH + '/_old_ROC_ALL.png')
     pl.close()
+
+    # TODO improve graphs generated
+    odds_results = odds.get_graphs(odds_results)
+    plt.savefig(OUTPUT_GRAPH_PATH + '/performance.png')
+    plt.close()
+
+    # Save results                                
+    odds_results.to_csv('./output/temp1.csv')
+    print(odds_results.iloc[:5])
+    logger.info('Matches with odds information: {0}'.format(
+                    len(odds_results)))
  
     # Threshold used is 0.5. We also tried using the threshold found
     # through the validate function. However, this achieves worse results

@@ -9,15 +9,64 @@ import numpy as np
 import logging
 import os 
 import os.path
+import matplotlib.pyplot as plt
  
 # TODO generate graphs of payouts and possible payouts(payout we would get
 # if we predict matches with 100% accuracy).
 
 logger = logging.getLogger(__name__)
 
+def get_graphs(results):
+    results = results.copy()
+    n = 50
+    results['good_pred'] = results.apply(lambda row: 
+                                    prediction_to_binomial(
+                                        row, threshold = 0.5), axis = 1)
+    results['probH'] = 1/results['B365H']
+    t = range(n)
+    y_hat = results['predicted'][:n]
+    y = results['probH'][:n]
+    plt.plot(t, y_hat, 'r--', label = 'predicted')
+    plt.plot(t, y, 'b--', label = 'B365')
+    plt.legend(loc='lower_right')
+    
+    return results
+    
+# TODO chang the structure of the functions below to allow predictions
+# of draws.
+def prediction_to_binomial(row, threshold):
+    '''
+    Get a binomial random variable that is 1 if the prediction was correct
+    and 0 otherwise.
+    '''
+    predicted = row['predicted']
+    result = row['points']   
+    if np.isnan(predicted):
+       raise Exception('There is no prediction for certain matches')
+    if predicted >= threshold:
+        prediction = 3
+        if prediction == result:
+            output = 1
+            #print(row['index'], end = '')
+        else:
+            output = 0
+    else:
+        prediction = 0
+        if prediction == result:
+            output = 1
+            #print(row['index'], end = '')
+        else: 
+            output = 0
+    return output
+ 
 def prediction_to_payout(row, threshold, gamble_heads):
     '''
-    Get the payouts for betting on the 'predicted' team.
+    Get the payouts for betting on the 'predicted' team. 
+    - row must be a pd.Series. 
+    - threshold must an integer. 
+    - gamble_heads must be a list containing two integers. The first one 
+      is the home payout, the second one is the away payout. We will only 
+      use these two because we do not predict draws.
     '''
     predicted = row['predicted']
     result = row['points']
