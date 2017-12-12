@@ -1,7 +1,9 @@
+output/
+beamer/
 code/google_code/
 code/ipython-soccer-predictions-master.zip
 code/test/
 python-sportmonks/
-idea/
+.idea/
 *.pyc
 *.xlsx
