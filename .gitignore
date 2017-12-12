@@ -6,4 +6,4 @@ code/test/
 python-sportmonks/
 .idea/
 *.pyc
-
+_credentials*
