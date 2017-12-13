@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# *Most of the code was written by the author of the following repository. 
+#  I have modified it.
+#  https://github.com/GoogleCloudPlatform/ipython-soccer-predictions
+
 """
     Turns raw statistics about soccer matches into features we use
     for prediction. Combines a number of games of history to compute
