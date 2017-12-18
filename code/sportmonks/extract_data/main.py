@@ -22,7 +22,7 @@ def main():
 
     cfg_parser = configparser.ConfigParser()
     cfg_parser.read(cfg_name)
-    my_key = str(cfg_parser.get('key', 'Sportmonks'))
+    my_key = str(cfg_parser.get('Sportmonks', 'key'))
 
     logger.info('Beginning execution')
     sportmonks.init(my_key)

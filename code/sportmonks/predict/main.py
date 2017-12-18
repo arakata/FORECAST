@@ -196,6 +196,7 @@ def main():
     #TODO exclude first and last 4 matches
     #TODO redo CV using GridSearchCV
     #TODO use PCA to preprocess the data
+    #TODO implement SoftVoting
 
     config.time_taken_display(t0)
 
