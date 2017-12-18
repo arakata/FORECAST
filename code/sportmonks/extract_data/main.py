@@ -9,8 +9,9 @@ import sportmonks
 import config
 
 def main():
+
     LOGGER_LEVEL = 20
-    TOKEN = 'F1tmFVF2hXHkbJvkVqTJyfqOkLOQxlRCsvP7qguLI1irIhg0wiGryzBuGmei'
+    cfg_name = './config/_credentials.cfg'
     OUTPUT_PATH = './data/sportmonks/'
     GET_STATS = False
     league_id_list = [2,5,72,74,78,82,85,208,462,564,570,384,390,8,9,24,12,600,301,304,453,1114,292,654,651,444,573,579]
@@ -18,6 +19,10 @@ def main():
     t0 = time.time()
     pd.set_option('display.float_format', lambda x: '{0:.2f}'.format(x))
     logger = config.config_logger(__name__, level=LOGGER_LEVEL)
+
+    cfg_parser = configparser.ConfigParser()
+    cfg_parser.read(cfg_name)
+    my_key = str(cfg_parser.get('key', 'Sportmonks'))
 
     logger.info('Beginning execution')
     sportmonks.init(TOKEN)
@@ -47,11 +52,6 @@ def main():
 
     config.time_taken_display(t0)
     print(' ')
-
-    # TODO make a list of useful variables
-    # TODO extract odds
-    # TODO make 6 matches averages - so general that you can drop first N matches and last N
-    # TODO copy opponent stats on team row
 
 
 if __name__ == '__main__':

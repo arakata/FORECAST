@@ -23,6 +23,7 @@ def init(token):
     global api_token
     api_token = token
 
+
 def get(endpoint, include=None, page=None, paginated=True):
     payload = {'api_token': api_token }
     if include:
@@ -51,37 +52,46 @@ def get(endpoint, include=None, page=None, paginated=True):
                 data.extend(next_data)
     return data
 
+
 def continents():
     """With this endpoint you are able to retrieve a list of continents."""
     return get('continents')
+
 
 def continent(id):
     """With this endpoint you are able to retrieve details a specific continent."""
     return get('continents/{}'.format(id))
 
+
 def countries():
     """With this endpoint you are able to retrieve a list of countries."""
     return get('countries')
+
 
 def country(id):
     """With this endpoint you are able to retrieve details a specific country."""
     return get('countries/{}'.format(id))
 
+
 def leagues():
     """With this endpoint you are able to retrieve a list of leagues."""
     return get('leagues')
+
 
 def league(id, include=None, page=None, paginated=True):
     """With this endpoint you are able to retrieve details a specific league."""
     return get('leagues/{}'.format(id),include, page, paginated)
 
+
 def seasons():
     """With this endpoint you are able to retrieve a list of seasons."""
     return get('seasons')
 
+
 def season(id, last=None, include=None, page=None, paginated=True):
     """With this endpoint you are able to retrieve a specific season."""
     return get('seasons/{}'.format(id), include, page, paginated)
+
 
 def fixtures(first, last=None, include=None, page=None, paginated=True):
     """With this endpoint you are able to retrieve all fixtures between 2 dates or retrieve all fixtures for a given date."""
@@ -90,46 +100,57 @@ def fixtures(first, last=None, include=None, page=None, paginated=True):
     else:
         return get('fixtures/between/{}/{}/'.format(first, last), include, page, paginated)
 
+
 def fixture(id, include=None, page=None, paginated=True):
     """With this endpoint you are able to retrieve a fixture by it's id. """
     return get('fixtures/{}'.format(id), include, page, paginated)
+
 
 def todayscores():
     """With this endpoint you are able to retrieve all fixtures that are played on the current day."""
     return get('livescores')
 
+
 def livescores(include=None, page=None, paginated=True):
     """With this endpoint you are able to retrieve all fixtures for are currently beeing played. This response will also contain games that are starting within 45 minutes and that are ended less then 30 minutes ago."""
     return get('livescores/now', include, page, paginated)
+
 
 def standings(season):
     """With this endpoint you are able to retrieve the standings for a given season."""
     return get('standings/season/{}'.format(season))
 
+
 def venue(id):
     """With this endpoint you can get more information about a venue."""
     return get('venues/{}'.format(id))
+
 
 def teams(season):
     """It might be interesting to know what teams have played a game in a partisucal season. with this endpoint you are able to retrieve a list of teams that have at least played 1 game in it."""
     return get('teams/season/{}'.format(season))
 
+
 def team(id):
     """With this endpoint you are able to retrieve basic team information. """
     return get('teams/{}'.format(id))
+
 
 def rounds(season):
     """With this endpoint you are able to retrieve all rounds for a given season (if applicable)."""
     return get('rounds/season/{}'.format(season))
 
+
 def round(id):
     """With this endpoint you are able to retrieve a round by a given id."""
     return get('rounds/{}'.format(id))
+
 
 def id_variables():
     return ['league_id', 'season_id', 'fixture_id', 'localteam_id', 'visitorteam_id', 'team_id',
             'time.starting_at.date', 'localTeam.data.name', 'visitorTeam.data.name', 'scores.localteam_score',
             'scores.visitorteam_score']
+
 
 def order_fixture_dataframe(fixt_df):
     """
@@ -151,7 +172,8 @@ def order_fixture_dataframe(fixt_df):
     output_df = output_df[new_cols]
     return output_df
 
-def fixture_into_dataframe(fixt_json, verbose = False):
+
+def fixture_into_dataframe(fixt_json, verbose=False):
     """
     Convert a fixture json into a pandas dataframe.
     :param fixt_json: Fixture json obtained through the fixture function.
@@ -180,6 +202,7 @@ def fixture_into_dataframe(fixt_json, verbose = False):
     teams_df = order_fixture_dataframe(teams_df)
     return teams_df, has_stats
 
+
 def season_into_dataframe(season_json):
     """
     Generate a dataframe with all the games in the season.
@@ -205,6 +228,7 @@ def season_into_dataframe(season_json):
     #season_df.fillna(0, inplace=True)
     #season_df = order_fixture_dataframe(season_df)
     return season_df
+
 
 def league_into_dataframe(league_json):
     """
