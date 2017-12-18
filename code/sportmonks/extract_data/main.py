@@ -25,7 +25,7 @@ def main():
     my_key = str(cfg_parser.get('key', 'Sportmonks'))
 
     logger.info('Beginning execution')
-    sportmonks.init(TOKEN)
+    sportmonks.init(my_key)
 
     logger.info('Available leagues:')
     leagues_dict = {}
