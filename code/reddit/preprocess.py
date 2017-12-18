@@ -1,3 +1,4 @@
+# Forked from https://github.com/sharan-naribole/reddit-sentiment-soccer-prediction
 import unicodedata
 import re
 

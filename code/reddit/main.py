@@ -1,3 +1,5 @@
+# Forked from https://github.com/sharan-naribole/reddit-sentiment-soccer-prediction
+# I have done minor modifications
 # Local modules
 import preprocess
 import sentiment
@@ -119,14 +121,22 @@ def main():
     t0 = time.time()
     config_logger('logger', LOGGER_LEVEL)
 
+    cfg_parser = configparser.ConfigParser()
+    cfg_parser.read(cfg_name)
+    user_agent = str(cfg_parser.get('Reddit', 'user_agent'))
+    client_id = str(cfg_parser.get('Reddit', 'client_id'))
+    client_secret = str(cfg_parser.get('Reddit', 'client_secret'))
+    username = str(cfg_parser.get('Reddit', 'username'))
+    password = str(cfg_parser.get('Reddit', 'password'))
+
     # -------------- Extract Data ---------------
     if EXTRACT_DATA:
         reddit = praw.Reddit(
-                 user_agent = 'prediction:sentiment_analysis:SA_BOT2:1.0',
-                 client_id = 'ub5wwC4s659cWQ',
-                 client_secret = 'FpQysWwNmDD64sV5XrANp6-H-6Q',
-                 username='SA_BOT2',
-                 password='bot123456789')
+                 user_agent=user_agent,
+                 client_id=client_id,
+                 client_secret=client_secret,
+                 username=username,
+                 password=password)
 
         logger.info('Bot used: {0}'.format(reddit.user.me()))
 
