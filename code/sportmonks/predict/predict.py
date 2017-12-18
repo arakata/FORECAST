@@ -59,17 +59,6 @@ def report_model_output(model_output, label):
     return
 
 
-def adaBoost(x, y, n_iter=500):
-    adaBoost_model = AdaBoostClassifier(DecisionTreeClassifier(max_depth=1),
-                                        n_estimators=n_iter, learning_rate=1)
-    return adaBoost_model
-
-
-def xgBoost(x, y, n_iter=500):
-    xgBoost_model = GradientBoostingClassifier(n_estimators=n_iter, learning_rate=1, max_depth=1)
-    return xgBoost_model
-
-
 def logistic_cv(x, y, n_cv=10, lam=1):
     logit = LogisticRegression(C=lam)
     cv_score = cross_val_score(logit, x, y, cv=n_cv, scoring=make_scorer(accuracy_score))
@@ -88,19 +77,19 @@ def svm_cv(x, y, n_cv=10, lam=1):
     return cv_score
 
 
-def neural_network_cv(x, y, n_cv=10, layers=(10,5)):
+def neural_network_cv(x, y, n_cv=10, layers=(10, 5)):
     nn = MLPClassifier(solver='lbfgs', alpha=0.001, hidden_layer_sizes=layers, random_state=1)
     cv_score = cross_val_score(nn, x, y, cv=n_cv, scoring=make_scorer(accuracy_score))
     return cv_score
 
 
-def tree_cv(x, y, n_cv = 10):
+def tree_cv(x, y, n_cv=10):
     tree = DecisionTreeClassifier()
     cv_score = cross_val_score(tree, x, y, cv=n_cv, scoring=make_scorer(accuracy_score))
     return cv_score
 
 
-def adaBoost_cv(x, y, n_cv = 10):
+def adaBoost_cv(x, y, n_cv=10):
     adaBoost = AdaBoostClassifier(base_estimator=DecisionTreeClassifier(max_depth=1,
                                                                         criterion='entropy'),
                                   n_estimators=50)
@@ -108,26 +97,26 @@ def adaBoost_cv(x, y, n_cv = 10):
     return cv_score
 
 
-def xgBoost_cv(x,y, n_cv = 10):
-    xgBoost = GradientBoostingClassifier(n_estimators=29, max_depth=4, criterion='friedman_mse')
-    cv_score = cross_val_score(xgBoost, x, y, cv=n_cv, scoring=make_scorer(accuracy_score))
+def gbm_cv(x, y, n_cv=10):
+    gbm = GradientBoostingClassifier(n_estimators=29, max_depth=4, criterion='friedman_mse')
+    cv_score = cross_val_score(gbm, x, y, cv=n_cv, scoring=make_scorer(accuracy_score))
     return cv_score
 
 
-def treeBoost_cv(x,y, n_cv = 10):
+def treeBoost_cv(x, y, n_cv=10):
     treeBoost = ExtraTreesClassifier(n_estimators=50, bootstrap=True)
     cv_score = cross_val_score(treeBoost, x, y, cv=n_cv, scoring=make_scorer(accuracy_score))
     return cv_score
 
 
-def xgBoost_grid(x,y, n_cv = 10):
-    space_est = range(1, 50)
+def gbm_grid(x, y, n_cv=10):
+    space_est = range(1, 30)
     space_depth = range(1, 5)
     space_loss = ['deviance', 'exponential']
     space_criterion = ['friedman_mse', 'mse']
     param_grid = {'n_estimators': space_est, 'max_depth': space_depth,
                   'criterion': space_criterion}
-    xgBoost = GradientBoostingClassifier()
-    grid_xgboost = GridSearchCV(xgBoost, param_grid, cv=10, n_jobs=7)
-    grid_xgboost.fit(x, y)
-    return grid_xgboost
+    gbm = GradientBoostingClassifier()
+    grid_gbm = GridSearchCV(gbm, param_grid, cv=n_cv, n_jobs=7)
+    grid_gbm.fit(x, y)
+    return grid_gbm

@@ -69,7 +69,7 @@ def main():
     train_svm = False
     train_tree = False
     train_adaBoost = True
-    train_xgBoost = True
+    train_gbm = True
     train_treeBoost = True
     train_staged = False
     n_cv = 10
@@ -136,18 +136,18 @@ def main():
         predict.report_model_output(cv_adaBoost, 'AdaBoost')
         print(' ')
 
-    if train_xgBoost:
-        logger.info('Training models: xgBoost')
-        cv_xgBoost = list()
-        temp_xgBoost = predict.xgBoost_cv(x_data, y_data, n_cv=n_cv)
-        cv_xgBoost.append(temp_xgBoost)
-        predict.report_model_output(cv_xgBoost, 'xgBoost')
+    if train_gbm:
+        logger.info('Training models: gbm')
+        cv_gbm = list()
+        temp_gbm = predict.gbm_cv(x_data, y_data, n_cv=n_cv)
+        cv_gbm.append(temp_gbm)
+        predict.report_model_output(cv_gbm, 'GBM')
         print(' ')
 
-        logger.info('Grid: xgBoost')
-        gr_xgBoost = predict.xgBoost_grid(x_data, y_data)
-        print(gr_xgBoost.best_params_)
-        print(gr_xgBoost.best_score_)
+        logger.info('Grid: gbm')
+        grid_gbm = predict.gbm_grid(x_data, y_data)
+        print(grid_gbm.best_params_)
+        print(grid_gbm.best_score_)
 
     if train_treeBoost:
         logger.info('Training models: TreeBoost')
@@ -194,6 +194,8 @@ def main():
 
 
     #TODO exclude first and last 4 matches
+    #TODO redo CV using GridSearchCV
+    #TODO use PCA to preprocess the data
 
     config.time_taken_display(t0)
 
