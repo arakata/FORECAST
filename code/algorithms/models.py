@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
+import config
 
+logger = config.config_logger(__name__,10)
 
 class Fixture:
     def __init__(self, my_fixture, name):
@@ -13,9 +15,8 @@ class Fixture:
     def __str__(self):
         return 'League: {0} - Shape: {1}'.format(self.name, self.fixture.shape)
 
-    def get_team(self, team_id, home):
+    def get_team_games(self, team_id, home):
         df = self.fixture
-        #CHECK THIS!!
         team_name = df.loc[df['localteam_id'] == team_id]['localTeam.data.name'].iloc[0]
         name = self.name + ' - {0}'.format(team_name)
         if home == 0:
@@ -28,11 +29,31 @@ class Fixture:
             raise ValueError('home must be an integer between 0 and 2')
         return Fixture(output, name)
 
+    def get_team_scores(self, team_id):
+        local = self.get_team_games(team_id=team_id, home=1)
+        del(local.fixture['visitorTeam.data.name'])
+        del(local.fixture['visitorteam_id'])
+        local.fixture = local.fixture.rename(columns={'scores.localteam_score': 'score',
+                                                      'scores.visitorteam_score': 'op_score'})
+        visitor = self.get_team_games(team_id=team_id, home=0)
+        del(visitor.fixture['localTeam.data.name'])
+        del(visitor.fixture['localteam_id'])
+        visitor.fixture = visitor.fixture.rename(columns={'scores.visitorteam_score': 'score',
+                                                          'visitorteam_id': 'localteam_id',
+                                                          'visitorTeam.data.name': 'localTeam.data.name',
+                                                          'scores.localteam_score': 'op_score'})
+        output_fixture = local.fixture
+        output_fixture = output_fixture.append(visitor.fixture)
+        output_fixture.sort_values('time.starting_at.date', inplace=True)
+        output = Fixture(name=team_id, my_fixture=output_fixture)
+        return output
+
     def clean_fixture(self):
-        vars_to_keep = self.variables_to_keep()
-        my_fixture = self.fixture[vars_to_keep]
-        my_fixture = my_fixture.drop_duplicates().dropna()
-        self.fixture = my_fixture
+        output = self
+        vars_to_keep = output.variables_to_keep()
+        output.fixture = output.fixture[vars_to_keep]
+        output.fixture = output.fixture.drop_duplicates().dropna()
+        return output
 
     def variables_to_keep(self):
         output = ['league_id', 'season_id', 'fixture_id', 'localteam_id', 'visitorteam_id', 'time.starting_at.date',
@@ -53,32 +74,45 @@ class Fixture:
             output = my_fixture.iloc[x:-x]
         else:
             output = my_fixture.iloc[x:]
-            print(self.name)
+            logger.warning('Team has less than 15 matches: {0}'.format(self.name))
         name = self.name + ' - {0} dropped'.format(x)
         return Fixture(output, name)
 
-    #def get_mean(self, window):
-
-
-    def generate_dataset(self):
-        """ Generate a dataset ready for the poisson regression """
+    def remove_x_games(self, n):
+        """" Drop the first and last 4 matches for each season in a Fixture """
         output = pd.DataFrame([])
         seasons = self.seasons
-        print('original size: {0}'.format(self.fixture.shape))
+        original_name = self.name
+        logger.info('Main Fixture original size: {0}'.format(self.fixture.shape))
         for season in seasons:
             temp_season = self.get_season(season)
             teams = temp_season.team_ids
-            print('original size: {0}'.format(temp_season.fixture.shape))
+            logger.info('Season {1} original size: {0}'.format(temp_season.fixture.shape, season))
             for team_id in teams:
-                temp_team = temp_season.get_team(team_id, home=1)
-                temp_clean = temp_team.drop_x_games_first_last(4)
+                temp_team = temp_season.get_team_games(team_id, home=1)
+                temp_clean = temp_team.drop_x_games_first_last(n)
                 output = output.append(temp_clean.fixture)
         output = output.sort_values('time.starting_at.date')
-        print(output.shape)
-        print(output.tail().to_string())
+        return Fixture(output, name='{0} - {1} games dropped'.format(original_name, n))
 
-        # TODO: create the dataset with the rolling mean.
+    def get_mean(self, window_scored, window_conceded):
+        original_name = self.name
+        team_ids = self.team_ids
+        output = pd.DataFrame([])
+        for team_id in team_ids:
+            team_fixture = self.get_team_scores(team_id=team_id).fixture
+            team_fixture['roll_score'] = team_fixture['score'].rolling(window=window_scored).sum()
+            team_fixture['roll_op_score'] = team_fixture['score'].rolling(window=window_conceded).sum()
+            output = output.append(team_fixture)
+        output = output.sort_values('time.starting_at.date')
+        name = original_name + ' - roll sum'
+        return Fixture(name=name, my_fixture=output)
 
+    def generate_dataset(self):
+        output = self.get_mean(window_scored=10, window_conceded=2)
+        output = output.remove_x_games(4)
+        output.fixture = output.fixture.dropna()
+        return output
 
 
 

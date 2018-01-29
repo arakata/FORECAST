@@ -16,16 +16,9 @@ def main():
     logger.info('Open dataframe: {0}'.format(target_league))
     raw_df = pd.read_csv(fixtures_path + target_league + '.csv', index_col=0)
     premier = models.Fixture(raw_df, 'premier')
-    premier.clean_fixture()
-    print(premier)
+    premier = premier.clean_fixture()
+    premier = premier.generate_dataset()
     print(premier.fixture.head().to_string())
-
-    a = premier.get_team(team_id=1, home=2)
-    print(a.fixture.head().to_string())
-
-    premier.generate_dataset()
-
-
 
     config.time_taken_display(t0)
 
