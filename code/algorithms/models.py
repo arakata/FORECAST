@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import math
 import config
 
 logger = config.config_logger(__name__,10)
@@ -31,20 +32,24 @@ class Fixture:
 
     def get_team_scores(self, team_id):
         local = self.get_team_games(team_id=team_id, home=1)
-        del(local.fixture['visitorTeam.data.name'])
-        del(local.fixture['visitorteam_id'])
-        local.fixture = local.fixture.rename(columns={'scores.localteam_score': 'score',
+        local_fixture = local.fixture.copy()
+        del(local_fixture['visitorTeam.data.name'])
+        del(local_fixture['visitorteam_id'])
+        local_fixture['is_home'] = 1
+        local_fixture = local_fixture.rename(columns={'scores.localteam_score': 'score',
                                                       'scores.visitorteam_score': 'op_score'})
         visitor = self.get_team_games(team_id=team_id, home=0)
-        del(visitor.fixture['localTeam.data.name'])
-        del(visitor.fixture['localteam_id'])
-        visitor.fixture = visitor.fixture.rename(columns={'scores.visitorteam_score': 'score',
+        visitor_fixture = visitor.fixture.copy()
+        del(visitor_fixture['localTeam.data.name'])
+        del(visitor_fixture['localteam_id'])
+        visitor_fixture['is_home'] = 0
+        visitor_fixture = visitor_fixture.rename(columns={'scores.visitorteam_score': 'score',
                                                           'visitorteam_id': 'localteam_id',
                                                           'visitorTeam.data.name': 'localTeam.data.name',
                                                           'scores.localteam_score': 'op_score'})
-        output_fixture = local.fixture
-        output_fixture = output_fixture.append(visitor.fixture)
-        output_fixture.sort_values('time.starting_at.date', inplace=True)
+        output_fixture = local_fixture
+        output_fixture = output_fixture.append(visitor_fixture)
+        output_fixture = output_fixture.sort_values('time.starting_at.date')
         output = Fixture(name=team_id, my_fixture=output_fixture)
         return output
 
@@ -53,11 +58,6 @@ class Fixture:
         vars_to_keep = output.variables_to_keep()
         output.fixture = output.fixture[vars_to_keep]
         output.fixture = output.fixture.drop_duplicates().dropna()
-        return output
-
-    def variables_to_keep(self):
-        output = ['league_id', 'season_id', 'fixture_id', 'localteam_id', 'visitorteam_id', 'time.starting_at.date',
-                  'localTeam.data.name', 'visitorTeam.data.name', 'scores.localteam_score', 'scores.visitorteam_score']
         return output
 
     def get_season(self, season_id):
@@ -101,8 +101,8 @@ class Fixture:
         output = pd.DataFrame([])
         for team_id in team_ids:
             team_fixture = self.get_team_scores(team_id=team_id).fixture
-            team_fixture['roll_score'] = team_fixture['score'].rolling(window=window_scored).sum()
-            team_fixture['roll_op_score'] = team_fixture['score'].rolling(window=window_conceded).sum()
+            team_fixture['roll_score'] = team_fixture['score'].rolling(window=window_scored).sum().shift(1)
+            team_fixture['roll_op_score'] = team_fixture['score'].rolling(window=window_conceded).sum().shift(1)
             output = output.append(team_fixture)
         output = output.sort_values('time.starting_at.date')
         name = original_name + ' - roll sum'
@@ -114,7 +114,59 @@ class Fixture:
         output.fixture = output.fixture.dropna()
         return output
 
+    def get_team_names_and_ids(self):
+        names_and_ids = set(zip(self.fixture['localteam_id'], self.fixture['localTeam.data.name']))
+        output = {}
+        for team_id, team_name in names_and_ids:
+            output[team_name] = team_id
+        return output
 
+    def add_champion_dummy(self, champions_df):
+        origin_name = self.name
+        teams_dict = self.get_team_names_and_ids()
+        champions_df = champions_df.replace(teams_dict)
+        output = pd.DataFrame([])
+        for season in self.seasons:
+            season_dict = self.get_seasons_dict()
+            target_year = season_dict[season]
+            champions = self.get_champions_in_period(champions_df, target_year, 4)
+            temp_fixture = self.get_season(season).fixture.copy()
+            temp_fixture['champion'] = temp_fixture['localteam_id'].apply(
+                lambda x: create_dummy_for_champions(x, champions))
+            output = output.append(temp_fixture)
+        output = output.sort_values('time.starting_at.date')
+        name = origin_name + ' - add champion'
+        return Fixture(name=name, my_fixture=output)
+
+    def get_seasons_dict(self):
+        my_fixture = self.fixture
+        my_fixture['year'] = my_fixture['time.starting_at.date'].apply(lambda x: x[:4]).astype('int')
+        output = {}
+        for season in self.seasons:
+            temp = my_fixture.loc[my_fixture['season_id'] == season, :]
+            year_mean = math.ceil(np.mean(temp['year']))
+            output.update({season: year_mean})
+        return output
+
+    @staticmethod
+    def get_champions_in_period(champions_df, year, window):
+        output = set()
+        for i in range(year-window, year):
+            output.update(champions_df[str(i)].tolist())
+        return output
+
+    @staticmethod
+    def variables_to_keep():
+        output = ['league_id', 'season_id', 'fixture_id', 'localteam_id', 'visitorteam_id', 'time.starting_at.date',
+                  'localTeam.data.name', 'visitorTeam.data.name', 'scores.localteam_score', 'scores.visitorteam_score']
+        return output
+
+
+def create_dummy_for_champions(team_id, champion_set):
+        if team_id in champion_set:
+            return 1
+        else:
+            return 0
 
 
 
