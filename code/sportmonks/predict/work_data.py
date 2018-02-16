@@ -181,12 +181,12 @@ def remove_unique(my_df):
 
 def duplicate_stats(my_df):
     my_df = my_df.copy()
-    if len(my_df) % 2 != 0:
-        my_df = remove_unique(my_df)
+    my_df = remove_unique(my_df)
+    my_df = my_df.sort_values('fixture_id')
     target = my_df[variables_to_duplicate()]
     target = _splice(target, 'op_', variables_to_duplicate())
     my_df.drop(variables_to_duplicate(), inplace=True, axis=1)
-    output = pd.concat([my_df,target], axis=1)
+    output = pd.concat([my_df, target], axis=1)
     op_goals = output['op_goals'].replace(0, 1)
     op_passes = output['op_passes.accurate'].replace(0, 1)
     op_shots = output['op_shots.total'].replace(0, 1)

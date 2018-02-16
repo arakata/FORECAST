@@ -182,6 +182,7 @@ def get_accuracy(target, predictions, threshold):
     accuracy = (true_pos + true_neg) * 1.0 / len(target) 
     return accuracy
 
+
 def get_optimal_threshold(target, predictions):
     max_acc = (0,0)
     for n in range(100):
@@ -286,6 +287,7 @@ def validate(label, target, predictions, baseline=0.5, compute_auc=False,
             false_pos, false_neg, true_pos, true_neg, pos, neg, len(target)))
 
     return threshold    
+
 
 def _coerce_types(vals):
     """ Makes sure all of the values in a list are floats. """
@@ -459,7 +461,7 @@ def predict_model(model, test, ignore_cols):
       
     x_test = _splice(_coerce(_clone_and_drop(test, ignore_cols)))
     x_test['intercept'] = 1.0
-    predicted =  model.predict(x_test)
+    predicted = model.predict(x_test)
     result = test.copy()
     result['predicted'] = predicted
     return result

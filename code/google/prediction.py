@@ -201,8 +201,8 @@ def main():
     # signal.
     # TODO We are giving up on predicting draws. Perhaps a better approach 
     # is to use an ordered logit? Or a neural network?
-    train = club_data.loc[club_data['points'] != 1] 
-    #train = club_data
+    #train = club_data.loc[club_data['points'] != 1]
+    train = club_data
 
 
     # ---- Processing ----
@@ -365,8 +365,8 @@ def main():
     power_data = power.add_power(club_data, game_summaries, power_cols)
     
     # Like before, exclude draws from the training set.
-    power_train = power_data.loc[power_data['points'] != 1] 
-    # power_train = power_data
+    #power_train = power_data.loc[power_data['points'] != 1]
+    power_train = power_data
 
     # Estimate the model using the club data we had plus our new power 
     # variable.
@@ -400,7 +400,8 @@ def main():
 
     # Print estimated odds ratios.
     logger.info('Printing the five highest parameters from each category:')
-    print_params(power_model, 5)
+    print_params(power_model)
+    hi
 
 
     # ---- ODDS ----
@@ -454,10 +455,8 @@ def main():
     # We prepare the data by dropping NAs or games with only one
     # observation (there must be two observations per game everytime).
     complete_club_data = world_cup.prepare_data(club_data)  
-    complete_club_data = power.add_power(
-                             complete_club_data, 
-                             game_summaries, 
-                             power_cols)
+    complete_club_data = power.add_power(complete_club_data, game_summaries,
+                                         power_cols)
 
     # Use the coefficients from the power model to predict results
     # from the whole dataset 
@@ -492,12 +491,12 @@ def main():
     # Validate results with the odds database
     # TODO get the baseline from the training set - How to chose the 
     # threshold? - CAREFULL this function asumes that draws are the same 
-    # as loses beacuse we have not. This overestimates the amount of True 
+    # as loses. This overestimates the amount of True
     # Negatives in the sample.
     odds_y = [yval == 3 for yval in odds_results['points']]
-    threshold = world_cup.validate('odds', odds_y, 
-                    odds_results['predicted'], baseline, 
-                    compute_auc=True, quiet=False)
+    threshold = world_cup.validate('odds', odds_y,
+                                   odds_results['predicted'], baseline,
+                                   compute_auc=True, quiet=False)
     pl.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Luck')
     pl.legend(loc="lower right")
     pl.savefig(OUTPUT_GRAPH_PATH + '/_old_ROC_ALL.png')

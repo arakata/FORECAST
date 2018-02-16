@@ -2,12 +2,15 @@ import pandas as pd
 import numpy as np
 import math
 import config
+import random
 import pprint
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from scipy.stats import poisson, skellam
 
 logger = config.config_logger(__name__, 10)
+
+random.seed(1111)
 
 
 class Fixture:
@@ -96,6 +99,8 @@ class Fixture:
 
     def drop_x_games_first_last(self, x):
         """ Drop the first and last 4 matches for each season """
+        if x == 0:
+            return Fixture(self.fixture, name=self.name, local_fixture=self.local_fixture)
         my_fixture = self.fixture
         my_fixture = my_fixture.sort_values('time.starting_at.date')
         if len(my_fixture) > 15:
@@ -144,7 +149,7 @@ class Fixture:
 
     def generate_dataset(self):
         output = self.get_score_rolling_mean(window_scored=10, window_conceded=2)
-        output = output.remove_x_games(4)
+        output = output.remove_x_games(0)
         output.fixture = output.fixture.dropna()
         return output
 
@@ -184,9 +189,12 @@ class Fixture:
         my_fixture['year'] = my_fixture['time.starting_at.date'].apply(lambda x: x[:4]).astype('int')
         output = {}
         for season in self.seasons:
+            if season == 6397:
+                continue
             temp = my_fixture.loc[my_fixture['season_id'] == season, :]
             year_mean = math.ceil(np.mean(temp['year']))
             output.update({season: year_mean})
+        output.update({6397: 2018})
         return output
 
     def train_model(self):
@@ -260,7 +268,8 @@ class Fixture:
         return Fixture(my_fixture=my_fixture, name=self.name, local_fixture=self.local_fixture)
 
     def clean_results(self):
-        self.fixture = self.fixture[self.result_variables()]
+        self.fixture = self.fixture[self.result_variables()]\
+            .sort_values(['time.starting_at.date', 'fixture_id'])
         return
 
     def get_accuracy(self):
@@ -317,7 +326,7 @@ def drop_single_matches(df):
     i = 0
     output = pd.DataFrame([])
     fixture_id = df['fixture_id']
-    while i < df.shape[0]:
+    while i < df.shape[0]-1:
         if fixture_id.iloc[i] == fixture_id.iloc[i+1]:
             output = output.append(df.iloc[i])
             output = output.append(df.iloc[i+1])
@@ -349,5 +358,259 @@ def get_winner(row):
         return row['op_Team.data.name']
     else:
         return 'tie'
+
+
+def predict_model(model, test, ignore_cols):
+    """ Runs a simple predictor that will predict if we expect a team to
+        win.
+    """
+
+    x_test = _splice(_coerce(_clone_and_drop(test, ignore_cols)))
+    x_test['intercept'] = 1.0
+    predicted = model.predict(x_test)
+    result = test.copy()
+    result['predicted'] = predicted
+    return result
+
+
+def _clone_and_drop(data, drop_cols):
+    """ Returns a copy of a dataframe that doesn't have certain columns. """
+    clone = data.copy()
+    for col in drop_cols:
+        if col in clone.columns:
+            del clone[col]
+    return clone
+
+
+def _splice(data):
+    """ Splice both rows representing a game into a single one. """
+    data = data.copy()
+    opp = data.copy()
+    opp_cols = ['opp_%s' % (col,) for col in opp.columns]
+    opp.columns = opp_cols
+    opp = opp.apply(_swap_pairwise)
+    del opp['opp_is_home']
+
+    return data.join(opp)
+
+
+def _swap_pairwise(col):
+    """ Swap rows pairwise; i.e. swap row 0 and 1, 2 and 3, etc.  """
+    col = pd.np.array(col)
+    for index in range(0, len(col), 2):
+        val = col[index]
+        col[index] = col[index + 1]
+        col[index+1] = val
+    return col
+
+
+def _coerce_types(vals):
+    """ Makes sure all of the values in a list are floats. """
+    return [1.0 * val for val in vals]
+
+
+def _coerce(data):
+    """ Coerces a dataframe to all floats, and standardizes the values. """
+    return _standardize(data.apply(_coerce_types))
+
+
+def non_feature_cols():
+    return ['league_id', 'season_id', 'matchid', 'time.starting_at.date', 'teamid', 'op_teamid',
+            'op_Team.data.name', 'Team.data.name', 'op_team_name', 'score', 'op_score',
+            'op_points', 'round_id', 'referee_id', 'formation', 'op_formation', 'points',
+            'time.minute']
+
+
+def train_model(data, ignore_cols):
+    """ Trains a logistic regression model over the data. Columns that
+        are passed in ignore_cols are considered metadata and not used
+        in the model building.
+    """
+    # Validate the data
+    data = prepare_data(data)
+    logger.info('Observations used in the model: {0}'.format(len(data)))
+    target_col = 'points'
+    (train, test) = split(data)
+    train = train.loc[data['points'] != 1]
+    (y_train, x_train) = _extract_target(train, target_col)
+    x_train2 = _splice(_coerce(_clone_and_drop(x_train, ignore_cols)))
+
+    y_train2 = [int(yval) == 3 for yval in y_train]
+    logger.info('Training model')
+    model = build_model_logistic(y_train2, x_train2, alpha=8.0)
+    return model, test
+
+
+def prepare_data(data):
+    """ Drops all matches where we don't have data for both teams. """
+    data = data.copy()
+    data = _drop_unbalanced_matches(data)
+    _check_data(data)
+    return data
+
+
+L1_ALPHA = 16.0
+def build_model_logistic(target, data, acc=0.00000001, alpha=L1_ALPHA):
+    """ Trains a logistic regresion model. target is the target.
+        data is a dataframe of samples for training. The length of
+        target must match the number of rows in data.
+    """
+    data = data.copy()
+    data['intercept'] = 1.0
+    logit = sm.Logit(target, data, disp=False)
+    return logit.fit_regularized(maxiter=1024, alpha=alpha, acc=acc, disp=False)
+
+
+def _drop_unbalanced_matches(data):
+    """  Because we don't have data on both teams during a match, we
+         want to drop any match we don't have info about both teams.
+         This can happen if we have fewer than 10 previous games from
+         a particular team.
+    """
+    keep = []
+    index = 0
+    data = data.dropna()
+    while index < len(data) - 1:
+        skipped = False
+        for col in data:
+            if isinstance(col, float) and math.isnan(col):
+                keep.append(False)
+                index += 1
+                skipped = True
+
+        if skipped:
+            pass
+        elif data.iloc[index]['matchid'] == data.iloc[index + 1]['matchid']:
+            keep.append(True)
+            keep.append(True)
+            index += 2
+        else:
+            keep.append(False)
+            index += 1
+    while len(keep) < len(data):
+        keep.append(False)
+    results = data[keep]
+    if len(results) % 2 != 0:
+        raise Exception('Unexpected results')
+    return results
+
+
+def _check_data(data):
+    """ Walks a dataframe and make sure that all is well. """
+    i = 0
+    if len(data) % 2 != 0:
+        raise Exception('Unexpeted length')
+    matches = data['matchid']
+    teams = data['teamid']
+    op_teams = data['op_teamid']
+    while i < len(data) - 1:
+        if matches.iloc[i] != matches.iloc[i + 1]:
+            raise Exception('Match mismatch: %s vs %s ' % (
+                            matches.iloc[i], matches.iloc[i + 1]))
+        if teams.iloc[i] != op_teams.iloc[i + 1]:
+            raise Exception('Team mismatch: match %s team %s vs %s' % (
+                            matches.iloc[i], teams.iloc[i],
+                            op_teams.iloc[i + 1]))
+        if teams.iloc[i + 1] != op_teams.iloc[i]:
+            raise Exception('Team mismatch: match %s team %s vs %s' % (
+                            matches.iloc[i], teams.iloc[i + 1],
+                            op_teams.iloc[i]))
+        i += 2
+
+
+def split(data, test_proportion=0.2):
+    """ Splits a dataframe into a training set and a test set.
+        Must be careful because back-to-back rows are expeted to
+        represent the same game, so they both must go in the
+        test set or both in the training set.
+    """
+
+    train_vec = []
+    if len(data) % 2 != 0:
+        raise Exception('Unexpected data length')
+    while len(train_vec) < len(data):
+        rnd = random.random()
+        train_vec.append(rnd > test_proportion)
+        train_vec.append(rnd > test_proportion)
+
+    test_vec = [not val for val in train_vec]
+    train = data[train_vec]
+    test = data[test_vec]
+    if len(train) % 2 != 0:
+        raise Exception('Unexpected train length')
+    if len(test) % 2 != 0:
+        raise Exception('Unexpected test length')
+    return (train, test)
+
+
+def _extract_target(data, target_col):
+    """ Removes the target column from a data frame, returns the target
+        col and a new data frame minus the target. """
+    target = data[target_col]
+    train_df = data.copy()
+    del train_df[target_col]
+    return target, train_df
+
+
+def _standardize_col(col):
+    """ Standardizes a single column (subtracts mean and divides by std
+        dev).
+    """
+    std = np.std(col)
+    mean = np.mean(col)
+    if abs(std) > 0.001:
+        return col.apply(lambda val: (val - mean)/std)
+    else:
+        return col
+
+
+def _standardize(data):
+    """ Standardizes a dataframe. All fields must be numeric. """
+    return data.apply(_standardize_col)
+
+
+def get_expected_winner(row):
+    if row['predicted'] > 0.5:
+        return row['Team.data.name']
+    else:
+        return row['op_Team.data.name']
+
+
+def get_winners(my_df):
+    my_df['winner'] = my_df.apply(get_winner, axis=1)
+    output = my_df.loc[my_df['is_home'] == 1].copy().reset_index(drop=True)
+    temp = my_df.loc[my_df['is_home'] == 0].copy().reset_index(drop=True)
+    output['op_predicted'] = temp['predicted']
+    my_df = output.copy()
+    my_df = normalize_predictions(my_df)
+    my_df['expected_winner'] = my_df.apply(get_expected_winner, axis=1)
+    my_df = my_df[result_variables()].rename(columns={'matchid': 'fixture_id'})
+    my_df = my_df.sort_values(['time.starting_at.date', 'fixture_id'])
+    return my_df
+
+
+def get_accuracy(my_df):
+    total = my_df.shape[0]
+    good = np.sum([my_df['expected_winner'] == my_df['winner']])
+    return good / total
+
+
+def result_variables():
+    output = ['matchid', 'time.starting_at.date', 'Team.data.name', 'op_Team.data.name',
+              'expected_winner', 'winner', 'predicted', 'op_predicted']
+    return output
+
+
+def normalize_predictions(my_df):
+    my_df = my_df.copy()
+    my_df['a'] = my_df['predicted'] / (my_df['predicted'] + my_df['op_predicted'])
+    my_df['b'] = my_df['op_predicted'] / (my_df['predicted'] + my_df['op_predicted'])
+    my_df['predicted'] = my_df['a']
+    my_df['op_predicted'] = my_df['b']
+    del my_df['a']
+    del my_df['b']
+    return my_df
+
+
 
 
