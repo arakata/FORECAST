@@ -14,11 +14,12 @@ random.seed(1111)
 
 
 class Fixture:
-    def __init__(self, my_fixture, name, local_fixture=True):
+    def __init__(self, my_fixture, name, last_year, local_fixture=True):
         self.fixture = my_fixture
         self.name = name
         self.seasons = set(my_fixture['season_id'])
         self.local_fixture = local_fixture
+        self.last_year = last_year
         if local_fixture:
             self.team_ids = set(my_fixture['localteam_id'])
             self.team_names = set(my_fixture['localTeam.data.name'])
@@ -56,7 +57,7 @@ class Fixture:
                 raise ValueError('home must be an integer between 0 and 2')
             team_name = df.loc[df['team_id'] == team_id]['Team.data.name'].iloc[0]
             name = self.name + ' - {0}'.format(team_name)
-        return Fixture(output, name, local_fixture=local_fixture)
+        return Fixture(output, name, last_year=self.last_year, local_fixture=local_fixture)
 
     def get_team_scores(self, team_id):
         local = self.get_team_games(team_id=team_id, home=1)
@@ -80,16 +81,21 @@ class Fixture:
         output_fixture = local_fixture
         output_fixture = output_fixture.append(visitor_fixture)
         output_fixture = output_fixture.sort_values('time.starting_at.date')
-        output = Fixture(name=team_id, my_fixture=output_fixture, local_fixture=False)
+        output = Fixture(name=team_id, last_year=self.last_year, my_fixture=output_fixture, local_fixture=False)
         return output
 
-    def clean_fixture(self, final_year):
+    def clean_fixture(self, local_format=False):
         output = self
+        my_fixt = output.fixture
         vars_to_keep = output.variables_to_keep()
         season_dict = invert_dictionary(self.get_seasons_dict())
-        my_fixt = output.fixture
-        condition = (my_fixt['season_id'] == season_dict[2018]) & (np.isnan(my_fixt['team_id']))
-        my_fixt = my_fixt.loc[~condition]
+
+        if local_format:
+            my_fixt = my_fixt.loc[my_fixt['is_home'] == 1]
+        else:
+            condition = (my_fixt['season_id'] == season_dict[self.last_year]) & (np.isnan(my_fixt['team_id']))
+            my_fixt = my_fixt.loc[~condition]
+
         my_fixt = my_fixt[vars_to_keep]
         my_fixt = my_fixt.drop_duplicates().dropna()
         output.fixture = my_fixt
@@ -100,12 +106,12 @@ class Fixture:
         local_fixture = self.local_fixture
         output = df.loc[df['season_id'] == season_id]
         name = self.name + ' - season {0}'.format(season_id)
-        return Fixture(my_fixture=output, name=name, local_fixture=local_fixture)
+        return Fixture(my_fixture=output, last_year=self.last_year, name=name, local_fixture=local_fixture)
 
     def drop_x_games_first_last(self, x):
         """ Drop the first and last 4 matches for each season """
         if x == 0:
-            return Fixture(self.fixture, name=self.name, local_fixture=self.local_fixture)
+            return Fixture(self.fixture, last_year=self.last_year, name=self.name, local_fixture=self.local_fixture)
         my_fixture = self.fixture
         my_fixture = my_fixture.sort_values('time.starting_at.date')
         if len(my_fixture) > 15:
@@ -114,7 +120,7 @@ class Fixture:
             output = my_fixture.iloc[x:]
             logger.warning('Team has less than 15 matches: {0}'.format(self.name))
         name = self.name + ' - {0} dropped'.format(x)
-        return Fixture(output, name, local_fixture=self.local_fixture)
+        return Fixture(output, name, last_year=self.last_year, local_fixture=self.local_fixture)
 
     def remove_x_games(self, n):
         """" Drop the first and last 4 matches for each season in a Fixture """
@@ -132,7 +138,7 @@ class Fixture:
                 output = output.append(temp_clean.fixture)
         output = output.sort_values('time.starting_at.date')
         name = '{0} - {1} games dropped'.format(original_name, n)
-        return Fixture(output, name=name, local_fixture=self.local_fixture)
+        return Fixture(output, name=name, last_year=self.last_year, local_fixture=self.local_fixture)
 
     def get_score_rolling_mean(self, window_scored, window_conceded):
         original_name = self.name
@@ -150,7 +156,7 @@ class Fixture:
         output['roll_op_score'] = only_main_team
         output = output.sort_values('time.starting_at.date')
         name = original_name + ' - roll sum'
-        return Fixture(name=name, my_fixture=output, local_fixture=False)
+        return Fixture(name=name, last_year= self.last_year, my_fixture=output, local_fixture=False)
 
     def generate_dataset(self):
         output = self.get_score_rolling_mean(window_scored=10, window_conceded=2)
@@ -187,7 +193,7 @@ class Fixture:
             output = output.append(temp_fixture)
         output = output.sort_values('time.starting_at.date')
         name = origin_name + ' - add champion'
-        return Fixture(name=name, my_fixture=output, local_fixture=self.local_fixture)
+        return Fixture(name=name, last_year=self.last_year, my_fixture=output, local_fixture=self.local_fixture)
 
     def get_seasons_dict(self):
         my_fixture = self.fixture
@@ -201,7 +207,7 @@ class Fixture:
             temp = my_fixture.loc[my_fixture['season_id'] == season, :]
             year_mean = math.ceil(np.mean(temp['year']))
             output.update({season: year_mean})
-        output.update({last_season: 2018})
+        output.update({last_season: self.last_year})
         return output
 
     def train_model(self):
@@ -224,15 +230,15 @@ class Fixture:
         drop = drop_single_matches(drop)
         name_keep = self.name + ' - train'
         name_drop = self.name + ' - test'
-        keep = Fixture(name=name_keep, my_fixture=keep, local_fixture=self.local_fixture)
-        drop = Fixture(name=name_drop, my_fixture=drop, local_fixture=self.local_fixture)
+        keep = Fixture(name=name_keep, last_year=self.last_year, my_fixture=keep, local_fixture=self.local_fixture)
+        drop = Fixture(name=name_drop, last_year=self.last_year, my_fixture=drop, local_fixture=self.local_fixture)
         return keep, drop
 
     def add_predictions(self, predictions):
         my_fixture = self.fixture.copy()
         my_fixture['expected_score'] = predictions
         name = self.name + ' - predicted'
-        return Fixture(my_fixture=my_fixture, name=name, local_fixture=self.local_fixture)
+        return Fixture(my_fixture=my_fixture, last_year=self.last_year, name=name, local_fixture=self.local_fixture)
 
     def convert_to_matches(self):
         my_fixture = self.fixture.copy()
@@ -241,7 +247,8 @@ class Fixture:
         output = my_fixture.loc[my_fixture['is_home'] == 1].copy()
         temp = my_fixture.loc[my_fixture['is_home'] == 0].copy()
         output['op_expected_score'] = temp['expected_score']
-        return Fixture(name='match predicitons', my_fixture=output, local_fixture=self.local_fixture)
+        return Fixture(name='match predicitons', last_year=self.last_year,
+                       my_fixture=output, local_fixture=self.local_fixture)
 
     def get_matches_prediction(self, model):
         prediction = model.predict(self.fixture)
@@ -272,7 +279,8 @@ class Fixture:
         my_fixture['tie_prob'] = pd.Series(tie_prob_list, index=my_fixture.index)
         my_fixture['visitor_prob'] = pd.Series(visitor_prob_list, index=my_fixture.index)
         my_fixture['expected_winner'] = pd.Series(winner, index=my_fixture.index)
-        return Fixture(my_fixture=my_fixture, name=self.name, local_fixture=self.local_fixture)
+        return Fixture(my_fixture=my_fixture, last_year=self.last_year,
+                       name=self.name, local_fixture=self.local_fixture)
 
     def clean_results(self):
         self.fixture = self.fixture[self.result_variables()]\
@@ -295,7 +303,10 @@ class Fixture:
         last_season = {'82Bundesliga': 8026,
                        '8Premier_League': 6397,
                        '564La_Liga': 8442,
-                       '301Ligue_1': 6405}
+                       '301Ligue_1': 6405,
+                       'MLS': 2014,
+                       'la_liga': 2014,
+                       'premier': 2014}
         return last_season
 
     @staticmethod
@@ -373,6 +384,17 @@ def drop_single_matches(df):
     return output
 
 
+def convert_2match_to_1match(my_df):
+    my_df = my_df.sort_values('fixture_id')
+    local = my_df.loc[my_df['is_home'] == 1]
+    visitor = my_df.loc[my_df['is_home'] == 0]
+    visitor = visitor.rename(columns={'expected_goals': 'op_expected_goals'})
+    del visitor['is_home']
+    output = pd.merge(local, visitor, how='inner', on=['fixture_id'])
+    return output
+
+
+
 def sum_triangle_and_diagonal_from_matrix(my_matrix):
     upper, lower, diagonal = 0, 0, 0
     for i in range(my_matrix.shape[0]):
@@ -406,6 +428,7 @@ def get_winner_mod(row):
         return 'visit'
     else:
         return 'tie'
+
 
 def predict_model(model, test, ignore_cols):
     """ Runs a simple predictor that will predict if we expect a team to

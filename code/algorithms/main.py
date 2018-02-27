@@ -33,8 +33,8 @@ def main():
     print(stats_df.head().to_string())
 
     logger.info('Get descriptive stats')
-    my_league = models.Fixture(raw_df, target_league)
-    my_league = my_league.clean_fixture(2018)
+    my_league = models.Fixture(raw_df, target_league, last_year=2018)
+    my_league = my_league.clean_fixture()
     stats_season = models.get_results_frequency(my_league)
     stats_season.to_csv('./output/descriptives/{0}.csv'.format(target_league), index=None)
 
@@ -59,8 +59,8 @@ def main():
     results_google.to_csv(output_path + 'google_predictions.csv', index=None)
 
     logger.info('Preprocess data')
-    my_league = models.Fixture(raw_df, target_league)
-    my_league = my_league.clean_fixture(2018)
+    my_league = models.Fixture(raw_df, target_league, last_year=2018)
+    my_league = my_league.clean_fixture()
     my_league = my_league.generate_dataset()
     my_league = my_league.add_champion_dummy(champions_df)
 
@@ -89,9 +89,9 @@ def main():
                                                     'expected_winner': 'google_expected_winner'})
     results_gs = results_gs.fixture[['fixture_id', 'local_prob', 'tie_prob', 'visitor_prob', 'expected_winner']]
     results_gs = results_gs.rename(columns={'local_prob': 'gs_local_prob',
-                                                    'tie_prob': 'gs_tie_prob',
-                                                    'visitor_prob': 'gs_visitor_prob',
-                                                    'expected_winner': 'gs_expected_winner'})
+                                            'tie_prob': 'gs_tie_prob',
+                                            'visitor_prob': 'gs_visitor_prob',
+                                            'expected_winner': 'gs_expected_winner'})
 
     results = pd.merge(results_google, results_gs, how='inner', on=['fixture_id'])
     logger.info('Matches predicted: {0}'.format(results.shape[0]))
