@@ -83,11 +83,16 @@ class Fixture:
         output = Fixture(name=team_id, my_fixture=output_fixture, local_fixture=False)
         return output
 
-    def clean_fixture(self):
+    def clean_fixture(self, final_year):
         output = self
         vars_to_keep = output.variables_to_keep()
-        output.fixture = output.fixture[vars_to_keep]
-        output.fixture = output.fixture.drop_duplicates().dropna()
+        season_dict = invert_dictionary(self.get_seasons_dict())
+        my_fixt = output.fixture
+        condition = (my_fixt['season_id'] == season_dict[2018]) & (np.isnan(my_fixt['team_id']))
+        my_fixt = my_fixt.loc[~condition]
+        my_fixt = my_fixt[vars_to_keep]
+        my_fixt = my_fixt.drop_duplicates().dropna()
+        output.fixture = my_fixt
         return output
 
     def get_season(self, season_id):
@@ -188,13 +193,15 @@ class Fixture:
         my_fixture = self.fixture
         my_fixture['year'] = my_fixture['time.starting_at.date'].apply(lambda x: x[:4]).astype('int')
         output = {}
+        league_name = self.name.split(' ')[0]
+        last_season = self.get_last_season()[league_name]
         for season in self.seasons:
-            if season == 6397:
+            if season == last_season:
                 continue
             temp = my_fixture.loc[my_fixture['season_id'] == season, :]
             year_mean = math.ceil(np.mean(temp['year']))
             output.update({season: year_mean})
-        output.update({6397: 2018})
+        output.update({last_season: 2018})
         return output
 
     def train_model(self):
@@ -278,6 +285,18 @@ class Fixture:
         good = np.sum([my_fixture['expected_winner'] == my_fixture['winner']])
         return good/total
 
+    def determine_winner(self):
+        output = self
+        output.fixture['winner_mod'] = output.fixture.apply(get_winner_mod, axis=1)
+        return output
+
+    @staticmethod
+    def get_last_season():
+        last_season = {'82Bundesliga': 8026,
+                       '8Premier_League': 6397,
+                       '564La_Liga': 8442,
+                       '301Ligue_1': 6405}
+        return last_season
 
     @staticmethod
     def get_champions_in_period(champions_df, year, window):
@@ -302,6 +321,24 @@ class Fixture:
         output = ['fixture_id', 'time.starting_at.date', 'Team.data.name', 'op_Team.data.name', 'expected_score',
                   'op_expected_score', 'local_prob', 'tie_prob', 'visitor_prob', 'expected_winner', 'winner']
         return output
+
+
+def get_results_frequency(my_df):
+    seasons_dict = my_df.get_seasons_dict()
+    my_league = my_df.determine_winner().fixture[['season_id', 'winner_mod']]
+    my_league = pd.get_dummies(my_league, columns=['winner_mod'])
+    my_league['total'] = 1
+    output = my_league.groupby('season_id').sum().reset_index().replace({'season_id': seasons_dict})
+    output = output.sort_values('season_id')
+    return output
+
+
+def get_league_dictionary():
+    league_dict = {'82Bundesliga': 82,
+                   '8Premier_League': 8,
+                   '564La_Liga': 564,
+                   '301Ligue_1': 301}
+    return league_dict
 
 
 def create_dummy_for_champions(team_id, champion_set):
@@ -359,6 +396,16 @@ def get_winner(row):
     else:
         return 'tie'
 
+
+def get_winner_mod(row):
+    local = row['scores.localteam_score']
+    visitor = row['scores.visitorteam_score']
+    if local > visitor:
+        return 'local'
+    elif local < visitor:
+        return 'visit'
+    else:
+        return 'tie'
 
 def predict_model(model, test, ignore_cols):
     """ Runs a simple predictor that will predict if we expect a team to
@@ -589,9 +636,10 @@ def get_winners(my_df):
     return my_df
 
 
-def get_accuracy(my_df):
+def get_accuracy(my_df, prefix):
     total = my_df.shape[0]
-    good = np.sum([my_df['expected_winner'] == my_df['winner']])
+    expected_winner = prefix + 'expected_winner'
+    good = np.sum([my_df[expected_winner] == my_df['winner']])
     return good / total
 
 
