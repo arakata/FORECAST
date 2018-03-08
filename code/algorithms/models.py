@@ -3,7 +3,6 @@ import numpy as np
 import math
 import config
 import random
-import pprint
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from scipy.stats import poisson, skellam
@@ -13,8 +12,21 @@ logger = config.config_logger(__name__, 10)
 random.seed(1111)
 
 
-class Fixture:
+class Fixture(object):
+    """
+    Class for the fixture of a league.
+    """
     def __init__(self, my_fixture, name, last_year, local_fixture=True):
+        """
+        Notes: The are certain headers that the my_fixture arg must have. Careful.
+        Args:
+            my_fixture (:obj: `pd.Dataframe`): fixture of a league.
+            name (str): name of the fixture.
+            last_year (int): last year available in the fixture
+            local_fixture (bool): True if all local team ids are included in a single
+                column named 'localteam_id'. False if locality is determined by a
+                column names 'is_home' and team ids are under the column 'team_id'.
+        """
         self.fixture = my_fixture
         self.name = name
         self.seasons = set(my_fixture['season_id'])
@@ -28,9 +40,24 @@ class Fixture:
             self.team_names = set(my_fixture['Team.data.name'])
 
     def __str__(self):
+        """
+        Returns:
+            Print name of the league and dimensions of the fixture DataFrame.
+        """
         return 'League: {0} - Shape: {1}'.format(self.name, self.fixture.shape)
 
     def get_team_games(self, team_id, home):
+        """
+        Extract the games of certain team as local, visit or both.
+        Args:
+            team_id (str): id of the requested team.
+            home (int: from 0 to 2): 0 for visit games.
+                                     1 for local games.
+                                     2 for both.
+
+        Returns:
+            Fixture object containing the games of certain team.
+        """
         df = self.fixture
         local_fixture = self.local_fixture
         if local_fixture:
@@ -60,6 +87,14 @@ class Fixture:
         return Fixture(output, name, last_year=self.last_year, local_fixture=local_fixture)
 
     def get_team_scores(self, team_id):
+        """
+        Convert fixture database from a local_fixture to a non local_fixture for a certain team.
+        Args:
+            team_id (str): id of the requested team.
+
+        Returns:
+            Fixture object containing the games of certain team in a non local_fixture structure.
+        """
         local = self.get_team_games(team_id=team_id, home=1)
         local_fixture = local.fixture.copy()
         local_fixture['is_home'] = 1
@@ -84,24 +119,39 @@ class Fixture:
         output = Fixture(name=team_id, last_year=self.last_year, my_fixture=output_fixture, local_fixture=False)
         return output
 
-    def clean_fixture(self, local_format=False):
+    def clean_fixture(self, is_sportmonks=True):
+        """
+        Keep only variables selected. Drop matches that have not been played yet. Drop duplicates.
+        Drop missing values.
+
+        Returns:
+            Fixture object.
+        """
         output = self
+        local_format = self.local_fixture
         my_fixt = output.fixture
         vars_to_keep = output.variables_to_keep()
         season_dict = invert_dictionary(self.get_seasons_dict())
 
-        if local_format:
+        if not local_format:
             my_fixt = my_fixt.loc[my_fixt['is_home'] == 1]
-        else:
+        elif is_sportmonks:
             condition = (my_fixt['season_id'] == season_dict[self.last_year]) & (np.isnan(my_fixt['team_id']))
             my_fixt = my_fixt.loc[~condition]
 
-        my_fixt = my_fixt[vars_to_keep]
-        my_fixt = my_fixt.drop_duplicates().dropna()
+        my_fixt = my_fixt[vars_to_keep].drop_duplicates().dropna()
         output.fixture = my_fixt
         return output
 
     def get_season(self, season_id):
+        """
+        Extract matches played in a certain season.
+        Args:
+            season_id (str): id of the season requested.
+
+        Returns:
+            Fixture object with the games played in the season requested.
+        """
         df = self.fixture
         local_fixture = self.local_fixture
         output = df.loc[df['season_id'] == season_id]
@@ -109,9 +159,16 @@ class Fixture:
         return Fixture(my_fixture=output, last_year=self.last_year, name=name, local_fixture=local_fixture)
 
     def drop_x_games_first_last(self, x):
-        """ Drop the first and last 4 matches for each season """
+        """
+        Drop the first and last x games of a Fixture.
+        Args:
+            x (int): number of games to be dropped at the start/end.
+
+        Returns:
+            Fixture object.
+        """
         if x == 0:
-            return Fixture(self.fixture, last_year=self.last_year, name=self.name, local_fixture=self.local_fixture)
+            return self
         my_fixture = self.fixture
         my_fixture = my_fixture.sort_values('time.starting_at.date')
         if len(my_fixture) > 15:
@@ -123,7 +180,14 @@ class Fixture:
         return Fixture(output, name, last_year=self.last_year, local_fixture=self.local_fixture)
 
     def remove_x_games(self, n):
-        """" Drop the first and last 4 matches for each season in a Fixture """
+        """
+        Drop the first and last n matches in each season.
+        Args:
+            n (int): number of games to be dropped at the start/end.
+
+        Returns:
+            Fixture object.
+        """
         output = pd.DataFrame([])
         seasons = self.seasons
         original_name = self.name
@@ -141,26 +205,54 @@ class Fixture:
         return Fixture(output, name=name, last_year=self.last_year, local_fixture=self.local_fixture)
 
     def get_score_rolling_mean(self, window_scored, window_conceded):
+        """
+        Generate the rolling mean of goals scored and goals recieved. For the former,
+        the window is window_scored, for the latter, window_conceded. Afterwards, the
+        result vector is shifted one position. This way, we do not include the current
+        result (score of the match) into the rolling mean computation.
+        Args:
+            window_scored (int): size of the window for goals scored.
+            window_conceded (int): size of the window for goals conceded.
+
+        Returns:
+            Fixture object with rolling mean included.
+        """
         original_name = self.name
         team_ids = self.team_ids
         output = pd.DataFrame([])
         for team_id in team_ids:
             team_fixture = self.get_team_scores(team_id=team_id).fixture
-            team_fixture['roll_score'] = team_fixture['score'].rolling(window=window_scored).sum().shift(1)
-            team_fixture['roll_op_score'] = team_fixture['op_score'].rolling(window=window_conceded).sum().shift(1)
+            team_fixture['roll_score'] = team_fixture['score'].rolling(
+                window=window_scored).sum().shift(1)
+            team_fixture['roll_op_score'] = team_fixture['op_score'].rolling(
+                window=window_conceded).sum().shift(1)
             output = output.append(team_fixture)
-        only_main_team = output[['team_id', 'Team.data.name', 'time.starting_at.date', 'roll_op_score']]
-        only_main_team = only_main_team.sort_values(['time.starting_at.date', 'team_id'])
+        only_main_team = output[['team_id', 'Team.data.name', 'time.starting_at.date',
+                                 'roll_op_score']]
+        only_main_team = only_main_team.sort_values(['time.starting_at.date',
+                                                     'team_id'])
         only_main_team = only_main_team['roll_op_score']
         output = output.sort_values(['time.starting_at.date', 'op_team_id'])
         output['roll_op_score'] = only_main_team
         output = output.sort_values('time.starting_at.date')
         name = original_name + ' - roll sum'
-        return Fixture(name=name, last_year= self.last_year, my_fixture=output, local_fixture=False)
+        return Fixture(name=name, last_year=self.last_year, my_fixture=output, local_fixture=False)
 
-    def generate_dataset(self):
-        output = self.get_score_rolling_mean(window_scored=10, window_conceded=2)
-        output = output.remove_x_games(0)
+    def generate_dataset(self, win_scored=10, win_conceded=2, games_removed=0):
+        """
+        Generate rolling means of goals scored and recieved. Drop the first
+        and last games_removed. Drop missing values.
+        Args:
+            win_scored (int): size of the window for goals scored.
+            win_conceded (int): size of the window for goals conceded.
+            games_removed (int): number of games to be removed at the start
+                and end of the season.
+
+        Returns:
+            Fixture object.
+        """
+        output = self.get_score_rolling_mean(window_scored=win_scored, window_conceded=win_conceded)
+        output = output.remove_x_games(games_removed)
         output.fixture = output.fixture.dropna()
         return output
 
@@ -306,7 +398,8 @@ class Fixture:
                        '301Ligue_1': 6405,
                        'MLS': 2014,
                        'la_liga': 2014,
-                       'premier': 2014}
+                       'premier': 2014,
+                       'comebol': 2}
         return last_season
 
     @staticmethod
@@ -330,7 +423,8 @@ class Fixture:
     @staticmethod
     def result_variables():
         output = ['fixture_id', 'time.starting_at.date', 'Team.data.name', 'op_Team.data.name', 'expected_score',
-                  'op_expected_score', 'local_prob', 'tie_prob', 'visitor_prob', 'expected_winner', 'winner']
+                  'op_expected_score', 'local_prob', 'tie_prob', 'visitor_prob', 'expected_winner', 'winner',
+                  'score', 'op_score']
         return output
 
 
@@ -646,14 +740,14 @@ def get_expected_winner(row):
         return row['op_Team.data.name']
 
 
-def get_winners(my_df):
+def get_winners(my_df, tie_prob):
     my_df['winner'] = my_df.apply(get_winner, axis=1)
     output = my_df.loc[my_df['is_home'] == 1].copy().reset_index(drop=True)
     temp = my_df.loc[my_df['is_home'] == 0].copy().reset_index(drop=True)
     output['op_predicted'] = temp['predicted']
     my_df = output.copy()
-    my_df = normalize_predictions(my_df)
     my_df['expected_winner'] = my_df.apply(get_expected_winner, axis=1)
+    my_df = normalize_predictions(my_df, tie_prob)
     my_df = my_df[result_variables()].rename(columns={'matchid': 'fixture_id'})
     my_df = my_df.sort_values(['time.starting_at.date', 'fixture_id'])
     return my_df
@@ -668,14 +762,15 @@ def get_accuracy(my_df, prefix):
 
 def result_variables():
     output = ['matchid', 'time.starting_at.date', 'Team.data.name', 'op_Team.data.name',
-              'expected_winner', 'winner', 'predicted', 'op_predicted']
+              'expected_winner', 'winner', 'predicted', 'op_predicted', 'tie_predicted']
     return output
 
 
-def normalize_predictions(my_df):
+def normalize_predictions(my_df, tie_prob):
     my_df = my_df.copy()
-    my_df['a'] = my_df['predicted'] / (my_df['predicted'] + my_df['op_predicted'])
-    my_df['b'] = my_df['op_predicted'] / (my_df['predicted'] + my_df['op_predicted'])
+    my_df['tie_predicted'] = tie_prob
+    my_df['a'] = my_df['predicted'] * (1-my_df['tie_predicted']) / (my_df['predicted'] + my_df['op_predicted'])
+    my_df['b'] = my_df['op_predicted'] * (1-my_df['tie_predicted']) / (my_df['predicted'] + my_df['op_predicted'])
     my_df['predicted'] = my_df['a']
     my_df['op_predicted'] = my_df['b']
     del my_df['a']
@@ -683,5 +778,21 @@ def normalize_predictions(my_df):
     return my_df
 
 
+def squared_error(a, b):
+    if len(a) != len(b):
+        raise ValueError('Squared error fuction: vectors do not have same lenght')
+    dif = a-b
+    return dif.dot(dif)
+
+
+def get_squared_error(my_df):
+    my_df = my_df.copy()
+    gs_local = squared_error(my_df['gs_expected_score'], my_df['score'])
+    gs_visit = squared_error(my_df['gs_op_expected_score'], my_df['op_score'])
+    google_local = squared_error(my_df['expected_goals'], my_df['score'])
+    google_visit = squared_error(my_df['op_expected_goals'], my_df['op_score'])
+    gs_output = (gs_local + gs_visit)/my_df.shape[0]
+    google_output = (google_local + google_visit)/my_df.shape[0]
+    return gs_output, google_output
 
 

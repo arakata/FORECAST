@@ -1,5 +1,6 @@
 import pandas as pd
 import time
+import pickle
 
 import code.algorithms.config as config
 import code.algorithms.models as models
@@ -8,30 +9,22 @@ import code.algorithms.models as models
 def main():
     t0 = time.time()
     logger = config.config_logger(__name__, 10)
-    data_google_path = './data/google/'
+    data_path = './data/'
     output_path = './output/goldman_sachs/'
-    target_league = 'premier'
+    target_league = 'comebol'
 
-    comp_dict = {'MLS': 98,
-                 'la_liga': 23,
-                 'premier': 8}
+    last_year_dict = {'comebol': 2016}
 
-    last_year_dict = {'MLS': 2014,
-                      'la_liga': 2013,
-                      'premier': 2012}
-
-    competitionid = comp_dict[target_league]
 
     logger.info('Begin execution')
-    logger.info('Open OPTA database')
-    raw_df = pd.read_csv('{0}raw_data_ready.csv'.format(data_google_path), header=0, index_col=0)
+    logger.info('Open comebol database')
+    raw_df = pd.read_csv('{0}comebol_complete.csv'.format(data_path), header=0, index_col=0)
     logger.info('Open league winners database')
-    champions_df = pd.read_csv('{0}league_winners/{1}.csv'.format(data_google_path, target_league),
+    champions_df = pd.read_csv('{0}google/league_winners/{1}.csv'.format(data_path, target_league),
                                header=0, index_col=None)
     print(raw_df.head().to_string())
 
     logger.info('Preprocess data')
-    raw_df = raw_df.loc[raw_df['competitionid'] == competitionid]
     raw_df = raw_df.rename(columns={'competitionid': 'league_id',
                                     'seasonid': 'season_id',
                                     'matchid': 'fixture_id',
@@ -44,24 +37,24 @@ def main():
                                     'op_goals': 'scores.visitorteam_score'})
     opta_df = raw_df[['fixture_id', 'expected_goals', 'is_home']]
     opta_df = models.convert_2match_to_1match(opta_df)
+    print(opta_df.head())
 
     raw_df = raw_df.loc[raw_df['is_home'] == 1]
 
     my_league = models.Fixture(raw_df, target_league, last_year=last_year_dict[target_league],
                                local_fixture=True)
     my_league = my_league.clean_fixture(is_sportmonks=False)
-
-    my_league = my_league.generate_dataset()
+    my_league = my_league.generate_dataset(win_conceded=2, win_scored=2)
+    print(my_league.fixture.head().to_string())
+    print(my_league.fixture.tail().to_string())
     my_league = my_league.add_champion_dummy(champions_df)
 
-    train, test = my_league.exclude_last_x_seasons(1)
-    logger.info('Train model: poisson regression - {0} obs'.format(train.fixture.shape[0]))
-    model = train.train_model()
-    print(my_league)
-    print(my_league.fixture.head().to_string())
+    logger.info('Open trained model')
+    with open('{0}gs_model.pickle'.format(output_path), 'rb') as handle:
+        model = pickle.load(handle)
 
     logger.info('Extract predictions')
-    results_gs = test.get_matches_prediction(model)
+    results_gs = my_league.get_matches_prediction(model)
     print(results_gs.fixture.head().to_string())
 
     results_gs.clean_results()

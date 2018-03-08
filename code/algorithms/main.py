@@ -1,5 +1,6 @@
 import pandas as pd
 import time
+import pickle
 
 import code.algorithms.config as config
 import code.algorithms.models as models
@@ -14,7 +15,7 @@ def main():
     stats_path = './data/sportmonks/'
 
     logger.info('Begin execution')
-    target_league = '82Bundesliga'
+    target_league = '8Premier_League'
     stats_file = 'sportmonks_final'
     league_id = models.get_league_dictionary()[target_league]
 
@@ -30,12 +31,13 @@ def main():
     champions_df = pd.read_csv(champions_path + target_league + '.csv', index_col=None)
     logger.info('Open stats dataframe: {0}'.format(stats_file))
     stats_df = pd.read_csv(stats_path + stats_file + '.csv', index_col=0)
-    print(stats_df.head().to_string())
+
 
     logger.info('Get descriptive stats')
     my_league = models.Fixture(raw_df, target_league, last_year=2018)
     my_league = my_league.clean_fixture()
     stats_season = models.get_results_frequency(my_league)
+    tie_prob = stats_season['winner_mod_tie'].sum() / stats_season['total'].sum()
     stats_season.to_csv('./output/descriptives/{0}.csv'.format(target_league), index=None)
 
     stats_df = stats_df.rename(columns={'fixture_id': 'matchid',
@@ -53,7 +55,7 @@ def main():
         stats_df, models.non_feature_cols())
     results_google = models.predict_model(model, objective, models.non_feature_cols())
     print(results_google.head().to_string())
-    results_google = models.get_winners(results_google)
+    results_google = models.get_winners(results_google, tie_prob=tie_prob)
     accuracy = models.get_accuracy(results_google, '')
     logger.info('GOOGLE - Accuracy obtained: {0}'.format(accuracy))
     results_google.to_csv(output_path + 'google_predictions.csv', index=None)
@@ -64,11 +66,13 @@ def main():
     my_league = my_league.generate_dataset()
     my_league = my_league.add_champion_dummy(champions_df)
 
-    logger.info('Train model: poisson regression')
     train, test = my_league.exclude_last_x_seasons(2)
+    logger.info('Train model: poisson regression - obs: {0}'.format(train.fixture.shape[0]))
     model = train.train_model()
     print(my_league)
     print(my_league.fixture.head().to_string())
+    with open('{0}gs_model.pickle'.format(output_path), 'wb') as handle:
+        pickle.dump(model, handle)
 
     logger.info('Extract predictions')
     results_gs = test.get_matches_prediction(model)
@@ -86,6 +90,7 @@ def main():
     logger.info('Merge Google and GS results')
     results_google = results_google.rename(columns={'predicted': 'google_predicted',
                                                     'op_predicted': 'google_op_predicted',
+                                                    'tie_predicted': 'google_tie_predicted',
                                                     'expected_winner': 'google_expected_winner'})
     results_gs = results_gs.fixture[['fixture_id', 'local_prob', 'tie_prob', 'visitor_prob', 'expected_winner']]
     results_gs = results_gs.rename(columns={'local_prob': 'gs_local_prob',
