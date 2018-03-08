@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# *Most of the code was written by the author of the following repository. 
-#  I have modified it.
-#  https://github.com/GoogleCloudPlatform/ipython-soccer-predictions
-
 """
     Predicts soccer outcomes using logistic regression.
 """
@@ -29,6 +25,8 @@ import pylab as pl
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
 import statsmodels.api as sm
+from scipy import stats
+stats.chisqprob = lambda chisq, df: stats.chi2.sf(chisq, df)
 
 logger = logging.getLogger(__name__)
 random.seed(1234)
@@ -141,6 +139,7 @@ def build_model_logistic(target, data, acc=0.00000001, alpha=L1_ALPHA):
     data['intercept'] = 1.0
     logit = sm.Logit(target, data, disp=False)
     return logit.fit_regularized(maxiter=1024, alpha=alpha, acc=acc, disp=False)
+
 
 L1_ALPHA = 16.0
 def build_model_MNlogistic(target, data, acc=0.00000001, alpha=L1_ALPHA):
@@ -289,7 +288,6 @@ def validate(label, target, predictions, baseline=0.5, compute_auc=False,
 
     return threshold    
 
-
 def _coerce_types(vals):
     """ Makes sure all of the values in a list are floats. """
     return [1.0 * val for val in vals]
@@ -360,8 +358,6 @@ def extract_predictions(data, predictions, threshold = 50):
     probs = _team_test_prob(predictions)
     teams0 = []
     teams1 = []
-    goals0 = []
-    goals1 = []
     points = []
     for game in range(int(len(data)/2)):
         if data['matchid'].iloc[game*2] != data['matchid'].iloc[game*2+1]:
@@ -370,23 +366,15 @@ def extract_predictions(data, predictions, threshold = 50):
                                data['matchid'].iloc[game * 2 + 1]))
         team0 = data['team_name'].iloc[game * 2]
         team1 = data['op_team_name'].iloc[game * 2]
-        goal0 = data['expected_goals'].iloc[game * 2]
-        goal1 = data['op_expected_goals'].iloc[game * 2]
-        if 'points' in data.columns:
+        if 'points' in data.columns: 
             points.append(data['points'].iloc[game * 2])
         teams0.append(team0)
         teams1.append(team1)
-        goals0.append(goal0)
-        goals1.append(goal1)
 
-    results = pd.DataFrame(
-        {'team_name': pd.Series(teams0), 
-         'op_team_name': pd.Series(teams1),
-         'google_expected_goals': pd.Series(goals0),
-         'google_op_expected_goals': pd.Series(goals1),
-         'predicted': pd.Series(probs).mul(100)},
-        columns=['team_name', 'google_expected_goals', 'google_op_expected_goals',
-                 'op_team_name', 'predicted'])
+    results = pd.DataFrame({'team_name': pd.Series(teams0),
+                            'op_team_name': pd.Series(teams1),
+                            'predicted': pd.Series(probs).mul(100)},
+                           columns=['team_name', 'op_team_name', 'predicted'])
 
     expected_winner = []
     for game in range(len(results)):
@@ -468,10 +456,9 @@ def predict_model(model, test, ignore_cols):
     """ Runs a simple predictor that will predict if we expect a team to 
         win. 
     """
-      
     x_test = _splice(_coerce(_clone_and_drop(test, ignore_cols)))
     x_test['intercept'] = 1.0
-    predicted = model.predict(x_test)
+    predicted =  model.predict(x_test)
     result = test.copy()
     result['predicted'] = predicted
     return result

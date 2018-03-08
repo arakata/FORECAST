@@ -11,71 +11,21 @@
 
 import pandas as pd
 import numpy as np
-import datetime as dt
 import math
 import time
-import os
-import logging
 import pylab as pl
 import matplotlib.pyplot as plt
+from scipy import stats
+stats.chisqprob = lambda chisq, df: stats.chi2.sf(chisq, df)
 
 import world_cup
 import match_stats
 import power
 import odds
-
+import code.algorithms.config as config
 
 
 # ======== FUNCTIONS =========
-# --------- GENERAL ----------
-def check_negative(number):
-    ''' Raise error if number is below zero. '''
-    if number < 0:
-        logger.error('{0} is negative'.format(number))
-        raise ValueError('{0} should not be negative'.format(number))
-
-def delta_time_in_HMS(begin, finish = None):
-    ''' Find how much time has passed between begin and finish. '''
-    raw = finish - begin
-    hours = round(raw // 3600)
-    minutes = round((raw % 3600) // 60)
-    seconds = round((raw % 3600) % 60)
-    return (raw, hours, minutes, seconds)
-
-def time_taken_display(begin, finish = None):
-    ''' 
-    Display in logger how much time has passed between 
-    begin and finish. 
-    '''
-    if finish == None:
-        finish = time.time()
-
-    if finish < begin:
-        logger.error('Finish time lower than begin time. '
-                     'Begin: {0} - Finish: {1}'.format(begin, finish))
-        raise ValueError('Finish time cannot be lower than begin time')
-
-    [check_negative(x) for x in (begin, finish)]
-
-    raw, hours, minutes, seconds = delta_time_in_HMS(begin, finish)
-    logger.debug('Excecution took a raw time of {0} seconds'.format(
-                     round(raw, 5)))
-    logger.info(('Excecution took {0} hours, {1} minutes and '
-                '{2} seconds').format(hours, minutes, seconds))
-
-
-# ---------- CONFIG ----------
-def config_logger(name, level = 10):
-    ''' Config logger output with level 'level'. '''
-    logging.basicConfig(
-                level = level, 
-                format = ('%(asctime)s - %(name)s - '
-                          '%(levelname)s - %(message)s'))
-    global logger
-    logger = logging.getLogger(name)
-    return logger
-
-
 # -------- PROCESSING --------
 def print_params(model, limit=None):
     ''' Print the parameters of the model estimated '''
@@ -125,6 +75,7 @@ def main():
 
     INPUT1 = './data/raw_data_ready.csv'
     INPUT2 = './data/game_summaries_mod.csv'
+    PERU_APP = './data/comebol_complete.csv'
     WC_INPUT1 = './data/wc_mod.csv'
     WC_INPUT2 = './data/wc_comp_mod.csv'
     WC_HOME = './data/wc_home.csv'
@@ -132,8 +83,8 @@ def main():
     ODDS_PATH = './data/odds/pool/'
 
     OUTPUT_GRAPH_PATH = './output/graphs/'
-    GAMBLE_HOUSE = 'B365'
     t0 = time.time()
+    logger = config.config_logger(__name__, 10)
 
 
     # ---- Preprocessing ----
@@ -154,20 +105,28 @@ def main():
     logger.info('Importing CSV: {0}'.format(INPUT1))
 
     parser2 = lambda date: pd.datetime.strptime(date, '%Y-%m-%d %H:%M:%f')
-    raw_data = pd.read_csv(INPUT1,
-                           index_col=0,
-                           header=0,
-                           parse_dates=['timestamp'],
-                           date_parser=parser2,
-                           encoding='utf-8')
+    raw_data = pd.read_csv(
+                   INPUT1, 
+                   index_col = 0,
+                   header = 0,
+                   parse_dates = ['timestamp'],
+                   date_parser = parser2,
+                   encoding = 'utf-8')
 
     # game_summaries has information about every match played in the 
     # leagues included from 2011 to 2014 and WC data from 2014, 2010 and 
     # 2006.
     logger.info('Importing CSV: {0}'.format(INPUT2))
-    game_summaries = pd.read_csv(INPUT2,
-                                 index_col=0,
-                                 header=0)
+    game_summaries = pd.read_csv(
+                         INPUT2, 
+                         index_col = 0,
+                         header = 0)
+
+    logger.info('Import CSV: {0}'.format(PERU_APP))
+    test_peru = pd.read_csv(
+                         PERU_APP, 
+                         index_col = 0,
+                         header = 0)
 
     logger.info('Number of attributes: {0}'.format(raw_data.shape[1]))
     logger.info('Total observations: {0}'.format(len(raw_data)))
@@ -182,21 +141,26 @@ def main():
     temp_wc = raw_data[raw_data['competitionid'] == 4].iloc[0]
     
     # Generate a table with goals and points using club data.
-    points = club_data.replace({'points': {
-        0: 'lose', 1: 'tie', 3: 'win'}})['points']
-    goals_points = pd.crosstab(club_data['goals'], points)
+    points = club_data.replace(
+                 {'points': {
+                     0: 'lose', 1: 'tie', 3: 'win'}})['points']
+    goals_points =  pd.crosstab(
+                        club_data['goals'],
+                        points)
 
     logger.info('Getting descriptive stats:')
     print('Goals and points:\n{0}'.format(goals_points))
     print('\nPoints frequency:\n{0}'.format(points.value_counts()))
-    print('\nGoals frequency:\n{0}'.format(club_data['goals'].value_counts()))
+    print('\nGoals frequency:\n{0}'.format(
+              club_data['goals'].value_counts()))
    
     # Don't train on games that ended in a draw, since they have less 
     # signal.
     # TODO We are giving up on predicting draws. Perhaps a better approach 
     # is to use an ordered logit? Or a neural network?
-    train = club_data.loc[club_data['points'] != 1]
+    train = club_data.loc[club_data['points'] != 1] 
     #train = club_data
+
 
     # ---- Processing ----
     logger.info('Beginning training')
@@ -211,21 +175,33 @@ def main():
     # 0 otherwise. The regularization parameter used is 8.
     (model, test) = world_cup.train_model(
          train, match_stats.get_non_feature_columns())
-    #print('\n{0}'.format(model.summary()))
+    print('\n{0}'.format(model.summary()))
 
     # We print the Pseudo-Rsquared and the odds ratio increase generated by
     # each attribute.
     logger.info('Rsquared: {0:.3f}'.format(model.prsquared))
     logger.info('Printing the five highest parameters from each category:')
-    print_params(model, 5)
+    print_params(model)
 
-  
+
     # ---- Postprocessing ----
     # Using the coefficients of the model, we predict the results of the 
     # test set. 
     results = world_cup.predict_model(model, test, 
         match_stats.get_non_feature_columns())
     logger.debug('Results predicted: {0}'.format(len(results)))
+#    print(results.head())
+
+    # PERU APPLICATION:
+    results_peru = world_cup.predict_model(model, test_peru,
+        match_stats.get_non_feature_columns())
+    logger.debug('Results predicted: {0}'.format(len(results_peru)))
+
+    pred_peru = world_cup.extract_predictions(
+        results_peru.copy(), results_peru['predicted'], 50)
+    logger.info('Peru predictions:\n{0}'.format(pred_peru))
+    pred_peru.to_csv('./output/results_comebol.csv')
+#    print(results_peru)
 
     # Brute force to find the threshold that maximizes the accuracy of 
     # the model.
@@ -295,8 +271,8 @@ def main():
     # It might be a good idea to brute force it and maximize AUC metric
     # using the training dataset? Careful with overfitting. 
     logger.info('Prediction metrics:')
-    #threshold = world_cup.validate(3, y, results['predicted'], baseline,
-    #                               compute_auc=True, quiet=False)
+    world_cup.validate(3, y, results['predicted'], baseline,
+                     compute_auc=True, quiet=False)
     pl.savefig(OUTPUT_GRAPH_PATH + '/ROC_initial.png')
     pl.close()
 
@@ -310,12 +286,14 @@ def main():
     logger.info('Adding power information')
     power_cols = [('points', points_to_sgn, 'points'), ]
     
-    game_summaries = game_summaries.sort_values(['seasonid', 'matchid'],
-                                                ascending = [False, True])
+    game_summaries = game_summaries.sort_values(
+                         ['seasonid', 'matchid'], 
+                         ascending = [False, True])
     logger.info('Seasons frequency:\n{0}'.format(
                     game_summaries['seasonid'].value_counts()))
     logger.info('Competitions frequency:\n{0}'.format(
                     game_summaries['competitionid'].value_counts()))
+
 
     # The power attribute tries to predict how likely is a team to win 
     # their matches, using as input only their name. 
@@ -351,38 +329,34 @@ def main():
     # 7. Extract the odds ratio of each attribute (team) and normalize it, 
     #    so the range of the power variable is bounded between {0,1}. 
     #
+    # TODO I think we would get the same outcomes -or better- if we 
+    #      just add dummy variables for each team.
     power_data = power.add_power(club_data, game_summaries, power_cols)
     
     # Like before, exclude draws from the training set.
-    power_train = power_data.loc[power_data['points'] != 1]
-    #power_train = power_data
+    power_train = power_data.loc[power_data['points'] != 1] 
+    # power_train = power_data
 
     # Estimate the model using the club data we had plus our new power 
     # variable.
     (power_model, power_test) = world_cup.train_model(
         power_train, match_stats.get_non_feature_columns())
     # Report new pseudo r-quared.
-    logger.info('Rsquared: {0:.3f}, Power Coef {1:.3f}.'.format(power_model.prsquared,
-                                                                math.exp(power_model.params['power_points'])))
+    logger.info('Rsquared: {0:.3f}, Power Coef {1:.3f}.'.format(
+        power_model.prsquared, 
+        math.exp(power_model.params['power_points'])))
 
     # Predict the outcomes of the test set. 
-    power_results = world_cup.predict_model(power_model, power_test,
-                                            match_stats.get_non_feature_columns())
+    power_results = world_cup.predict_model(power_model, power_test, 
+        match_stats.get_non_feature_columns())
     logger.debug('Power results predicted: {0}'.format(len(power_results)))
     
     # Like before, extract metrics from the new model after predicting 
     # outcomes of the test set.
     power_y = [yval == 3 for yval in power_test['points']]
-    threshold = world_cup.validate(3, power_y, power_results['predicted'],
-                                   baseline, compute_auc=True, quiet=False)
-
-    # Extract predictions
-    power_predictions = world_cup.extract_predictions(
-        power_results.copy(), power_results['predicted'], threshold*100)
-    power_predictions.to_csv('./output/google/power_predictions.csv')
-    print(power_predictions.head().to_string())
-    print(power_results.head().to_string())
-    hi
+    world_cup.validate(3, power_y,
+                       power_results['predicted'], baseline, 
+                       compute_auc=True, quiet=False)
 
     # Print before and after ROC curve.
     pl.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Luck')
@@ -395,114 +369,64 @@ def main():
 
     # Print estimated odds ratios.
     logger.info('Printing the five highest parameters from each category:')
-    print_params(power_model)
-    hi
+    print_params(power_model, 5)
+
 
     # ---- ODDS ----
     # Generate a list with the headers related to the GAMBLE_HOUSE chosen. 
     # H stands for Home team wins, D for draw, A for Away team wins
-    # TODO implement an algorithm that reads GAMBLE_HOUSE as a list
-    gambling_heads = [GAMBLE_HOUSE + a for a in ['H', 'D', 'A']]
+    # TODO select the highest payoffs among home/tie/away
+    gamble_house = 'B365'
+    gambling_heads = [gamble_house + a for a in ['H', 'D', 'A']]
 
     # Importing odds data
     # The CSV file '{league}_{year1}_{year2}' contains information 
     # about the odds rate of multiple gambling houses. We will use 
     # this information to predict if our strategy is profitable. 
     # The CSV file 'team_names' contains the names of the teams that 
-    # appear in the oods database and the game_summaries database. 
+    # appear in the odds database and the game_summaries database.
     # Since I do not have a unique key to link the games between both
-    # databses, I will generate an index using these names.
+    # databases, I will generate an index using these names.
     selected_vars = ['Date', 'HomeTeam', 'AwayTeam'] + gambling_heads
  
     logger.info('Importing CSV: {0}'.format(ODDS_NAMES))
-    odds_names = pd.read_csv(ODDS_NAMES,
-                             header=0,
-                             encoding='utf-8')
-
+    odds_names = pd.read_csv(ODDS_NAMES, header=0, encoding='utf-8')
     odds_dict = odds.open_odds(ODDS_PATH, selected_vars) 
     
     # The funtion preprocessing does the following: 
-    # 1. Add the correct names provided by odds_names dataset 
-    #    to the odds dataset. 
-    # 2. Generate an unique index that identifies observations 
-    #    thoughout datasets.
-    # 3. Drops variables that do not appear in odds_vars (irrerlevant 
-    #    variables).
+    # 1. Add the correct names provided by odds_names dataset to the odds dataset.
+    # 2. Generate an unique index that identifies observations thoughout datasets.
+    # 3. Drop variables that do not appear in odds_vars (irrelevant variables).
     odds_vars = ['index'] + gambling_heads
     odds_dict = odds.preprocessing(odds_dict, odds_names, odds_vars)
     #print(odds_dict.values())
 
-    # For the odds prediction and gamble we will use the whole dataset.
-    # Since we only have odds information from England and Spain leagues,
-    # we will only use these. Nonetheless, the model was trained using the
-    # the whole dataset (excluding draws - power estimation).
-    # Also, we are using part of the training data to compute the
-    # gambling excercises. In consequence, the gambling excercise will
-    # be an upper bound of the correct excercise.
-
-    # TODO The correct gambling exercise would require that we only use 
-    # past data to estimate the model and allocate gambles. Then, a 
-    # re-estimation will be done every 'window' days or observations. 
-    # This new estimation will include data from the past window. 
-    #
-    # We prepare the data by dropping NAs or games with only one
-    # observation (there must be two observations per game everytime).
-    complete_club_data = world_cup.prepare_data(club_data)  
-    complete_club_data = power.add_power(complete_club_data, game_summaries,
-                                         power_cols)
-
-    # Use the coefficients from the power model to predict results
-    # from the whole dataset 
-    odds_results = world_cup.predict_model(power_model, complete_club_data,
-                                           match_stats.get_non_feature_columns())
-    logger.debug('Odds results predicted: {0}'.format(len(odds_results)))
-
-
     # Add odds to the dataframe and generate an index
     logger.info('Adding odds from gambling houses to the results')
-    odds_results['index'] = odds.generate_index(odds_results,
-                                                'timestamp',
-                                                'team_name',
-                                                'op_team_name',
-                                                order='is_home')
-    odds_results = odds.add_odds(odds_results,
-                                 odds_dict,
-                                 'index',
-                                 print_list=False)
+    power_results['index'] = odds.generate_index(power_results, 'timestamp', 'team_name',
+                                                 'op_team_name', order='is_home')
+    odds_results = odds.add_odds(power_results, odds_dict, 'index', print_list=False)
 
     # Keep only (i) variables relevant to the strategy and (ii) results 
     # with odds information
     strategy_vars = ['index', 'timestamp', 'team_name', 'op_team_name',
                      'competitionid', 'points', 'predicted']
-    odds_results = odds.get_matches(odds_results,
-                                    strategy_vars + gambling_heads)
+    odds_results = odds.get_matches(odds_results, strategy_vars + gambling_heads)
 
+    print(odds_results.head().to_string())
+    print(odds_results.shape)
+    hi
 
-    # Validate results with the odds database
-    # TODO get the baseline from the training set - How to chose the 
-    # threshold? - CAREFULL this function asumes that draws are the same 
-    # as loses. This overestimates the amount of True
-    # Negatives in the sample.
-    odds_y = [yval == 3 for yval in odds_results['points']]
-    threshold = world_cup.validate('odds', odds_y,
-                                   odds_results['predicted'], baseline,
-                                   compute_auc=True, quiet=False)
-    pl.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Luck')
-    pl.legend(loc="lower right")
-    pl.savefig(OUTPUT_GRAPH_PATH + '/_old_ROC_ALL.png')
-    pl.close()
-
-    # TODO improve graphs generated
     odds_results = odds.get_graphs(odds_results)
     plt.savefig(OUTPUT_GRAPH_PATH + '/performance.png')
     plt.close()
 
     # Save results                                
     odds_results.to_csv('./output/temp1.csv')
-    print(odds_results.iloc[:5])
+    print(odds_results.head().to_string())
     logger.info('Matches with odds information: {0}'.format(
                     len(odds_results)))
-
+ 
     # The gamble function simulates a gambling exercise where the agent has
     # a fixed budget. He can bet in a window of games. The amount bet in
     # each match is chosen by the strategy. Currently, there are only two
@@ -517,23 +441,20 @@ def main():
     # we find a new budget for the next window. If the budget is, at any 
     # point, lower than 0.01, the exercise finishes.
     #
-    # TODO implement cancelling bets under kelly strat.
-    # TODO implement multiple thresholds so we do not predict the whole
-    # sample but only those with the highest probability of winning/losing. 
-    #
     # Obtain gambling results 
     HA_payouts = (gambling_heads[0], gambling_heads[2])
     logger.info('Beginning gamble')
+    print(odds_results.head().to_string())
+    hi
+
     gamble_results = odds.gamble(odds_results,
-                            threshold = 0.5, 
-                            strategy = odds.strat_kelly_naive, 
-                            window = 10, 
-                            budget = 1000,
-                            gamble_heads = HA_payouts)
-
-
+                                 threshold=0.5,
+                                 strategy=odds.strat_kelly_naive,
+                                 window=10,
+                                 budget=1000,
+                                 gamble_heads=HA_payouts)
     logger.info('Final budget: {0:.2f}'.format(gamble_results))
-
+    hi
          
     # ---- WC ----
     # We begin with the World Cup matches.
@@ -555,8 +476,8 @@ def main():
     # as home team. 
     wc_home = pd.read_csv(
                   WC_HOME,
-                  index_col = 0,
-                  header = 0)
+                  index_col=0,
+                  header=0)
 
     wc_labeled = wc_labeled[wc_labeled['competitionid'] == 4]
     wc_power_train = game_summaries[
@@ -599,9 +520,9 @@ def main():
     print(wc_pred[wc_pred['points'] >= 0.0])
     print(wc_pred[~(wc_pred['points'] >= 0)])
 
-    time_taken_display(t0)
+    config.time_taken_display(t0)
     print(' ')
 
-config_logger(__name__, 10)
+
 if __name__ == '__main__':
     main()
