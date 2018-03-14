@@ -449,7 +449,7 @@ def train_model(data, ignore_cols):
     y_train2 = [int(yval) == 3 for yval in y_train]
     logger.info('Training model')
     model = build_model_logistic(y_train2, x_train2, alpha=8.0)
-    return (model, test)
+    return model, test
 
 
 def predict_model(model, test, ignore_cols):
@@ -462,4 +462,52 @@ def predict_model(model, test, ignore_cols):
     result = test.copy()
     result['predicted'] = predicted
     return result
+
+
+# -------- PROCESSING --------
+def print_params(model, limit=None):
+    ''' Print the parameters of the model estimated '''
+    # We do not print the estimated coefficients -bethas-, but the odds
+    # ratios minus 1. This means that one unit increase in the attribute
+    # A would increase in X the odds of winning. X is the number printed
+    # by this function associated with attribute A.
+    params = model.params.copy()
+    del params['intercept']
+
+    if not limit:
+        limit = len(params)
+
+    print("Positive features")
+    temp = params.sort_values(ascending=False)
+    print(np.exp(temp[[param > 0.001 for param in temp]]).sub(1)[:limit])
+
+    print("\nDropped features")
+    print(temp[[param  == 0.0 for param in temp]][:limit])
+
+    print("\nNegative features")
+    temp = params.sort_values(ascending=True)
+    print(np.exp(temp[[param < -0.001 for param in temp]]).sub(1)[:limit])
+
+
+def points_to_sgn(p):
+    if p > 0.1:
+        return 1.0
+#    elif p < -0.1: return -1.0
+    elif p < -0.1:
+        return 0.0
+    else:
+        return 0.0
+
+
+def add_home_override(df, home_map):
+    ''' Replace is_home variable for the World Cup prediction '''
+    df = df.copy()
+    for ii in range(len(df)):
+        team = df.iloc[ii]['teamid']
+        if team in home_map:
+            df['is_home'].iloc[ii] = home_map[team]
+        else:
+            # If we don't know, assume not at home.
+            df['is_home'].iloc[ii] = 0.0
+    return df
 
