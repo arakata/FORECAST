@@ -138,7 +138,7 @@ def gamble(odds_df, threshold, strategy, window, budget, gamble_heads):
         strategy.__name__, budget, window))
     df = odds_df.copy()
     n_matches = len(df)
-    df['pred'] = df.apply(lambda row: int(row['predicted'] > threshold)*3, axis=1)
+    df['op_predicted'] = 1 - df['predicted']
     df['payout'] = df.apply(lambda row: prediction_to_payout(row,
                                                              threshold,
                                                              gamble_heads),

@@ -32,7 +32,6 @@ def main():
     logger.info('Open stats dataframe: {0}'.format(stats_file))
     stats_df = pd.read_csv(stats_path + stats_file + '.csv', index_col=0)
 
-
     logger.info('Get descriptive stats')
     my_league = models.Fixture(raw_df, target_league, last_year=2018)
     my_league = my_league.clean_fixture()

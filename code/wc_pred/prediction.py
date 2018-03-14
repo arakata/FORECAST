@@ -105,35 +105,24 @@ def main():
     logger.info('Importing CSV: {0}'.format(INPUT1))
 
     parser2 = lambda date: pd.datetime.strptime(date, '%Y-%m-%d %H:%M:%f')
-    raw_data = pd.read_csv(
-                   INPUT1, 
-                   index_col = 0,
-                   header = 0,
-                   parse_dates = ['timestamp'],
-                   date_parser = parser2,
-                   encoding = 'utf-8')
+    raw_data = pd.read_csv(INPUT1, index_col=0, header=0, parse_dates=['timestamp'],
+                           date_parser=parser2, encoding='utf-8')
 
     # game_summaries has information about every match played in the 
     # leagues included from 2011 to 2014 and WC data from 2014, 2010 and 
     # 2006.
     logger.info('Importing CSV: {0}'.format(INPUT2))
-    game_summaries = pd.read_csv(
-                         INPUT2, 
-                         index_col = 0,
-                         header = 0)
+    game_summaries = pd.read_csv(INPUT2, index_col=0, header=0)
 
     logger.info('Import CSV: {0}'.format(PERU_APP))
-    test_peru = pd.read_csv(
-                         PERU_APP, 
-                         index_col = 0,
-                         header = 0)
+    test_peru = pd.read_csv(PERU_APP, index_col=0, header=0)
 
     logger.info('Number of attributes: {0}'.format(raw_data.shape[1]))
     logger.info('Total observations: {0}'.format(len(raw_data)))
 
     # Partition the world cup data and the club data. We're only going to 
     # train our model using club data.
-    club_data = raw_data[raw_data['competitionid'] != 4]
+    club_data = raw_data.loc[raw_data['competitionid'] != 4]
     logger.info('Club data observations: {0}'.format(len(club_data)))
 
     # Show the features latest game in competition id 4, which is the world
@@ -141,12 +130,8 @@ def main():
     temp_wc = raw_data[raw_data['competitionid'] == 4].iloc[0]
     
     # Generate a table with goals and points using club data.
-    points = club_data.replace(
-                 {'points': {
-                     0: 'lose', 1: 'tie', 3: 'win'}})['points']
-    goals_points =  pd.crosstab(
-                        club_data['goals'],
-                        points)
+    points = club_data.replace({'points': {0: 'lose', 1: 'tie', 3: 'win'}})['points']
+    goals_points = pd.crosstab(club_data['goals'], points)
 
     logger.info('Getting descriptive stats:')
     print('Goals and points:\n{0}'.format(goals_points))
@@ -415,7 +400,6 @@ def main():
 
     print(odds_results.head().to_string())
     print(odds_results.shape)
-    hi
 
     odds_results = odds.get_graphs(odds_results)
     plt.savefig(OUTPUT_GRAPH_PATH + '/performance.png')
@@ -445,12 +429,11 @@ def main():
     HA_payouts = (gambling_heads[0], gambling_heads[2])
     logger.info('Beginning gamble')
     print(odds_results.head().to_string())
-    hi
 
     gamble_results = odds.gamble(odds_results,
                                  threshold=0.5,
                                  strategy=odds.strat_kelly_naive,
-                                 window=10,
+                                 window=1,
                                  budget=1000,
                                  gamble_heads=HA_payouts)
     logger.info('Final budget: {0:.2f}'.format(gamble_results))
@@ -462,26 +445,16 @@ def main():
     # Dataset with the WC games and their attributes as an average of the 
     # previous 6 matches. Includes games from older WCs. Does not include 
     # results of matches.
-    wc_data = pd.read_csv(
-                  WC_INPUT1,
-                  index_col = 0,
-                  header = 0)
+    wc_data = pd.read_csv(WC_INPUT1, index_col=0, header=0)
     # Same database as game_summaries.
-    wc_labeled = pd.read_csv(
-                     WC_INPUT2,
-                     index_col = 0,
-                     header = 0)
-    # Dataset with the home attibute of the national teams in the WC. The 
+    wc_labeled = pd.read_csv(WC_INPUT2, index_col=0, header=0)
+    # Dataset with the home attribute of the national teams in the WC. The
     # WC was played in Brazil, but Brazil was not the only one considered 
     # as home team. 
-    wc_home = pd.read_csv(
-                  WC_HOME,
-                  index_col=0,
-                  header=0)
+    wc_home = pd.read_csv(WC_HOME, index_col=0, header=0)
 
-    wc_labeled = wc_labeled[wc_labeled['competitionid'] == 4]
-    wc_power_train = game_summaries[
-                         game_summaries['competitionid'] == 4].copy()
+    wc_labeled = wc_labeled.loc[wc_labeled['competitionid'] == 4]
+    wc_power_train = game_summaries.loc[game_summaries['competitionid'] == 4]
  
     home_override = {}
     for ii in range(len(wc_home)):
@@ -499,19 +472,17 @@ def main():
     wc_power_data = power.add_power(wc_data, wc_power_train, power_cols)
 
     # Predict the WC using the model we had estimated.
-    wc_results = world_cup.predict_model(power_model, wc_power_data, 
-        match_stats.get_non_feature_columns())
+    wc_results = world_cup.predict_model(power_model, wc_power_data,
+                                         match_stats.get_non_feature_columns())
 
     wc_with_points = wc_power_data.copy()
-    wc_with_points.index = pd.Index(
-        zip(wc_with_points['matchid'], wc_with_points['teamid']))
-    wc_labeled.index = pd.Index(
-        zip(wc_labeled['matchid'], wc_labeled['teamid']))
+    wc_with_points.index = pd.Index(zip(wc_with_points['matchid'],
+                                        wc_with_points['teamid']))
+    wc_labeled.index = pd.Index(zip(wc_labeled['matchid'], wc_labeled['teamid']))
     wc_with_points['points'] = wc_labeled['points']
 
     # Extract WC predictions.
-    wc_pred = world_cup.extract_predictions(wc_with_points, 
-                                            wc_results['predicted'])
+    wc_pred = world_cup.extract_predictions(wc_with_points, wc_results['predicted'])
 
     # Reverse our predictions to show the most recent first.
     wc_pred.reindex(index=wc_pred.index[::-1])
@@ -521,7 +492,6 @@ def main():
     print(wc_pred[~(wc_pred['points'] >= 0)])
 
     config.time_taken_display(t0)
-    print(' ')
 
 
 if __name__ == '__main__':

@@ -21,7 +21,8 @@ import numpy as np
 from numpy.linalg import LinAlgError
 import pandas as pd
 
-import world_cup
+import code.wc_pred.world_cup as world_cup
+
 
 def _build_team_matrix(data, target_col):
     """ Given a dataframe of games, builds a sparse power matrix.

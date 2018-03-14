@@ -37,7 +37,7 @@ def main():
                                     'op_goals': 'scores.visitorteam_score'})
     opta_df = raw_df[['fixture_id', 'expected_goals', 'is_home']]
     opta_df = models.convert_2match_to_1match(opta_df)
-    print(opta_df.head())
+    print(opta_df.tail())
 
     raw_df = raw_df.loc[raw_df['is_home'] == 1]
 
@@ -55,10 +55,7 @@ def main():
 
     logger.info('Extract predictions')
     results_gs = my_league.get_matches_prediction(model)
-    print(results_gs.fixture.head().to_string())
-
     results_gs.clean_results()
-    print(results_gs.fixture.head().to_string())
 
     accuracy = results_gs.get_accuracy()
     logger.info('GS - Accuracy obtained: {0}'.format(accuracy))
