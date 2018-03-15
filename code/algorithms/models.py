@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import math
-import config
+import code.algorithms.config as config
 import random
 import statsmodels.api as sm
 import statsmodels.formula.api as smf

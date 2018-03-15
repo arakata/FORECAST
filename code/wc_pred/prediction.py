@@ -223,7 +223,7 @@ def main():
     # issue by adding a 'power' measure as a new attribute. This new 
     # variable will try to capture the effect of the 'legacy' of a team. 
     logger.info('Adding power information')
-    power_cols = [('points', points_to_sgn, 'points'), ]
+    power_cols = [('points', world_cup.points_to_sgn, 'points'), ]
     
     game_summaries = game_summaries.sort_values(
                          ['seasonid', 'matchid'], 
@@ -308,7 +308,7 @@ def main():
 
     # Print estimated odds ratios.
     logger.info('Printing the five highest parameters from each category:')
-    print_params(power_model, 5)
+    world_cup.print_params(power_model, 5)
 
 
     # ---- ODDS ----

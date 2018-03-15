@@ -15,7 +15,6 @@ def main():
 
     last_year_dict = {'comebol': 2016}
 
-
     logger.info('Begin execution')
     logger.info('Open comebol database')
     raw_df = pd.read_csv('{0}comebol_complete.csv'.format(data_path), header=0, index_col=0)
