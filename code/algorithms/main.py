@@ -28,58 +28,71 @@ def main():
     logger.info('Open matches dataframe: {0}'.format(target_league))
     raw_df = pd.read_csv(fixtures_path + target_league + '.csv', index_col=0)
     logger.info('Open champions dataframe: {0}'.format(target_league))
-    champions_df = pd.read_csv(champions_path + target_league + '.csv', index_col=None)
+    champions_df = pd.read_csv(champions_path + stats_file + '.csv', index_col=None)
     logger.info('Open stats dataframe: {0}'.format(stats_file))
     stats_df = pd.read_csv(stats_path + stats_file + '.csv', index_col=0)
 
     logger.info('Get descriptive stats')
-    my_league = models.Fixture(raw_df, target_league, last_year=2018)
-    my_league = my_league.clean_fixture()
+    my_league = models.Fixture(raw_df, target_league)
+    my_league.clean_fixture()
     stats_season = models.get_results_frequency(my_league)
     tie_prob = stats_season['winner_mod_tie'].sum() / stats_season['total'].sum()
     stats_season.to_csv('./output/descriptives/{0}.csv'.format(target_league), index=None)
 
-    stats_df = stats_df.rename(columns={'fixture_id': 'matchid',
-                                        'team_id': 'teamid',
-                                        'op_team_id': 'op_teamid',
-                                        'team_name': 'Team.data.name',
-                                        'op_team_name': 'op_Team.data.name',
-                                        'goals': 'score',
-                                        'op_goals': 'op_score'})
+    logger.info('Google algorithm start')
+    google_df = stats_df.rename(columns={'fixture_id': 'matchid',
+                                         'team_id': 'teamid',
+                                         'op_team_id': 'op_teamid',
+                                         'team_name': 'Team.data.name',
+                                         'op_team_name': 'op_Team.data.name',
+                                         'goals': 'score',
+                                         'op_goals': 'op_score'})
 
-    objective = stats_df.loc[stats_df['league_id'] == league_id]
-    stats_df = stats_df.loc[stats_df['league_id'] != league_id]
-    print(stats_df.head().to_string())
-    (model, test) = models.train_model(
-        stats_df, models.non_feature_cols())
-    results_google = models.predict_model(model, objective, models.non_feature_cols())
-    print(results_google.head().to_string())
+    objective = google_df.loc[google_df['league_id'] == league_id]
+    google_df = google_df.loc[google_df['league_id'] != league_id]
+
+    (google_model, google_test) = models.train_model(google_df, models.non_feature_cols())
+    results_google = models.predict_model(google_model, objective, models.non_feature_cols())
+
     results_google = models.get_winners(results_google, tie_prob=tie_prob)
+    logger.info('GOOGLE - Matches predicted: {0}'.format(results_google.shape[0]))
     accuracy = models.get_accuracy(results_google, '')
     logger.info('GOOGLE - Accuracy obtained: {0}'.format(accuracy))
     results_google.to_csv(output_path + 'google_predictions.csv', index=None)
 
+    logger.info('GS algorithm start')
     logger.info('Preprocess data')
-    my_league = models.Fixture(raw_df, target_league, last_year=2018)
-    my_league = my_league.clean_fixture()
-    my_league = my_league.generate_dataset()
-    my_league = my_league.add_champion_dummy(champions_df)
+    stats_df = stats_df.rename(columns={'goals': 'score',
+                                        'op_goals': 'op_score',
+                                        'team_name': 'Team.data.name',
+                                        'op_team_name': 'op_Team.data.name'})
 
-    train, test = my_league.exclude_last_x_seasons(2)
+    my_league = models.Fixture(fixture=stats_df, name=target_league, local_fixture=False)
+    my_league = my_league.convert_2match_to_1match()
+    my_league.clean_fixture()
+    my_league = my_league.generate_dataset()
+    my_league.add_champion_dummy(champions_df)
+
+    #train, test = my_league.exclude_last_x_seasons(2)
+    temp_fixture = my_league.fixture
+    objective_fixt = temp_fixture.loc[temp_fixture['league_id'] == league_id]
+    objective = models.Fixture(fixture=objective_fixt, name='objective', local_fixture=False)
+    train_fixt = temp_fixture.loc[temp_fixture['league_id'] != league_id]
+    train = models.Fixture(fixture=train_fixt, name='train', local_fixture=False)
+
     logger.info('Train model: poisson regression - obs: {0}'.format(train.fixture.shape[0]))
-    model = train.train_model()
-    print(my_league)
-    print(my_league.fixture.head().to_string())
+    gs_model = train.train_model()
+
+    logger.info('Save trained model')
     with open('{0}gs_model.pickle'.format(output_path), 'wb') as handle:
-        pickle.dump(model, handle)
+        pickle.dump(gs_model, handle)
 
     logger.info('Extract predictions')
-    results_gs = test.get_matches_prediction(model)
-    print(results_gs.fixture.head().to_string())
+    results_gs = objective.get_matches_prediction(gs_model)
+    logger.info('GS - Matches predicted: {0}'.format(results_gs.fixture.shape[0]))
 
-    results_gs.clean_results()
-    print(results_gs.fixture.head().to_string())
     logger.info('Save results')
+    results_gs.clean_results()
     results_gs.fixture.to_csv(output_path + 'gs_predictions.csv', index=None)
 
     accuracy = results_gs.get_accuracy()
@@ -103,9 +116,8 @@ def main():
     accuracy_google = models.get_accuracy(results, 'google_')
     logger.info('Final GS acc: {0}'.format(accuracy_gs))
     logger.info('Final Google acc: {0}'.format(accuracy_google))
-    print(results.head().to_string())
-    print(results_gs.shape[0], results_google.shape[0])
     results.to_csv('{0}{1}_predictions.csv'.format(output_path, target_league), index=None)
+    print(results.head().to_string())
 
     config.time_taken_display(t0)
 

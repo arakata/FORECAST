@@ -18,10 +18,10 @@ import matplotlib.pyplot as plt
 from scipy import stats
 stats.chisqprob = lambda chisq, df: stats.chi2.sf(chisq, df)
 
-import world_cup
-import match_stats
-import power
-import odds
+import code.wc_pred.world_cup as world_cup
+import code.wc_pred.match_stats as match_stats
+import code.wc_pred.power as power
+import code.wc_pred.odds as odds
 import code.algorithms.config as config
 
 # ---------- MAIN ------------

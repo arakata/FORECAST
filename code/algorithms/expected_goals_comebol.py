@@ -13,15 +13,12 @@ def main():
     output_path = './output/goldman_sachs/'
     target_league = 'comebol'
 
-    last_year_dict = {'comebol': 2016}
-
     logger.info('Begin execution')
     logger.info('Open comebol database')
     raw_df = pd.read_csv('{0}comebol_complete.csv'.format(data_path), header=0, index_col=0)
     logger.info('Open league winners database')
     champions_df = pd.read_csv('{0}google/league_winners/{1}.csv'.format(data_path, target_league),
                                header=0, index_col=None)
-    print(raw_df.head().to_string())
 
     logger.info('Preprocess data')
     raw_df = raw_df.rename(columns={'competitionid': 'league_id',
@@ -36,16 +33,13 @@ def main():
                                     'op_goals': 'scores.visitorteam_score'})
     opta_df = raw_df[['fixture_id', 'expected_goals', 'is_home']]
     opta_df = models.convert_2match_to_1match(opta_df)
-    print(opta_df.tail())
+    del opta_df['is_home']
 
     raw_df = raw_df.loc[raw_df['is_home'] == 1]
 
-    my_league = models.Fixture(raw_df, target_league, last_year=last_year_dict[target_league],
-                               local_fixture=True)
-    my_league = my_league.clean_fixture(is_sportmonks=False)
-    my_league = my_league.generate_dataset(win_conceded=2, win_scored=2)
-    print(my_league.fixture.head().to_string())
-    print(my_league.fixture.tail().to_string())
+    my_league = models.Fixture(fixture=raw_df, name=target_league, local_fixture=True)
+    my_league = my_league.clean_fixture()
+    my_league = my_league.generate_dataset(win_scored=2, win_conceded=2)
     my_league = my_league.add_champion_dummy(champions_df)
 
     logger.info('Open trained model')
@@ -69,7 +63,6 @@ def main():
     logger.info('Merge results')
     results = pd.merge(results_gs, opta_df, how='inner', on=['fixture_id'])
     logger.info('Results predicted: {0}'.format(results.shape[0]))
-    print(results.head().to_string())
     squared_errors = models.get_squared_error(results)
     logger.info('Squared errors - GS: {0} | Google: {1}'.format(squared_errors[0],
                                                                 squared_errors[1]))
