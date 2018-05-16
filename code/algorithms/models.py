@@ -475,7 +475,8 @@ class Fixture(object):
                        'MLS': 2014,
                        'la_liga': 2014,
                        'premier': 2014,
-                       'comebol': 2}
+                       'comebol': 2,
+                       'wc2018': 2019}
         return last_season
 
     @staticmethod
